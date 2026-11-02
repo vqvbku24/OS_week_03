@@ -1,0 +1,19 @@
+# Binaries and build artifacts
+bin/
+*.exe
+*.o
+*.obj
+
+# Output files from benchmark and plotting
+results/*.csv
+!results/.gitkeep
+plots/*.png
+!plots/.gitkeep
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~

@@ -1,18 +1,18 @@
-# Môi Trường Thực Nghiệm (Environment)
+# Experimental Environment
 
-Phần này ghi nhận thông tin phần cứng, hệ điều hành và trình biên dịch được sử dụng để chạy benchmark chuẩn (do **Thành viên E** ghi nhận qua script `scripts/run_bench.sh`).
+This document records the hardware specifications, operating system, and compiler configuration used to benchmark all multi-threading approaches (maintained by **Member E** via `scripts/run_bench.sh`).
 
-## 1. Thông tin phần cứng & CPU
-<!-- TODO(E-2): scripts/run_bench.sh sẽ tự động xuất lscpu / uname -a vào đây -->
-- **CPU Model**: Sẽ được cập nhật khi chạy benchmark
-- **Số Cores vật lý / Logical Cores**: 
-- **L1/L2/L3 Cache**: 
-- **RAM**: 
+## 1. Hardware Specifications & CPU Topology
+<!-- TODO(E-2): scripts/run_bench.sh will automatically append lscpu / uname -a output here -->
+- **CPU Model**: Updated during formal benchmark run
+- **Physical Cores / Logical Cores (SMT)**: 
+- **L1 / L2 / L3 Cache Hierarchies**: 
+- **System Memory (RAM)**: 
 
-## 2. Hệ điều hành
-- **Hệ điều hành / OS Version**: 
+## 2. Operating System
+- **OS Platform & Version**: 
 - **Kernel Version**: 
 
-## 3. Trình biên dịch & Cờ tối ưu
-- **Compiler**: gcc (hỗ trợ C11, pthread)
-- **Compiler Flags**: `-O2 -std=c11 -Wall -Wextra -pthread`
+## 3. Compiler & Build Flags
+- **C Compiler**: gcc (supporting C11 standard, POSIX threads)
+- **Compiler Optimization Flags**: `-O2 -std=c11 -Wall -Wextra -pthread`

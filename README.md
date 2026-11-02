@@ -1,115 +1,115 @@
-# Lab: Ước Lượng Số π Bằng Phương Pháp Monte Carlo Đa Luồng
+# Lab: Estimating $\pi$ via Multi-Threaded Monte Carlo
 
-Dự án bài tập lớn môn Hệ Điều Hành (Operating Systems) nhằm nghiên cứu, hiện thực và đánh giá hiệu năng các mô hình lập trình đa luồng (multi-threading) thông qua bài toán tính xấp xỉ số $\pi$ bằng phương pháp Monte Carlo.
+Operating Systems laboratory project investigating, implementing, and evaluating multi-threaded concurrency models through Monte Carlo approximation of $\pi$.
 
 ---
 
-## 1. Phân Công Thành Viên
+## 1. Group Member Assignments
 
-| Thành viên | Ký hiệu | Vai trò & Trách nhiệm chính | Branch phụ trách |
+| Member | Code | Primary Responsibilities | Dedicated Git Branch |
 |---|---|---|---|
-| **QVinh** | **A** | Kiến trúc nền tảng (`common.h`), Approach 1 (`pi_single.c`), phương pháp đo | `feat/A-common` |
-| Thành viên 2 | **B** | Approach 2 Map-Reduce (`pi_local.c`), Thread scaling & Padding | `feat/B-local` |
-| Thành viên 3 | **C** | Approach 3 Mutex Lock (`pi_mutex.c`), Khảo sát Contention | `feat/C-mutex` |
-| Thành viên 4 | **D** | Biến thể Batching Mutex (`pi_mutex_k.c`), Atomic (`pi_atomic.c`) | `feat/D-mutexk-atomic` |
-| Thành viên 5 | **E** | Kịch bản đo lường tự động (`run_bench.sh`), đồ thị (`plot.py`), tổng hợp báo cáo | `feat/E-bench-plot` |
+| **QVinh** | **A** | Core platform architecture (`src/common.h`), Approach 1 (`src/pi_single.c`), measurement methodology | `feat/A-common` |
+| Member 2 | **B** | Approach 2 Map-Reduce (`src/pi_local.c`), thread scaling, memory padding | `feat/B-local` |
+| Member 3 | **C** | Approach 3 Mutex Lock (`src/pi_mutex.c`), lock contention analysis | `feat/C-mutex` |
+| Member 4 | **D** | Mutex batching variant (`src/pi_mutex_k.c`), lock-free atomic (`src/pi_atomic.c`) | `feat/D-mutexk-atomic` |
+| Member 5 | **E** | Automated benchmark runner (`scripts/run_bench.sh`), plotting (`scripts/plot.py`), report synthesis | `feat/E-bench-plot` |
 
-> Chi tiết từng đầu việc, tiêu chí hoàn thành và danh sách `TODO(X-n)` được quy định chi tiết tại [`TASKS.md`](TASKS.md).
+> Detailed work breakdown, completion criteria, and specific task checklist `TODO(X-n)` are maintained in [`TASKS.md`](TASKS.md).
 
 ---
 
-## 2. Cấu Trúc Thư Mục
+## 2. Directory Layout
 
 ```text
-pi-montecarlo-lab/
-├── Makefile                # Kịch bản biên dịch dự án
-├── README.md               # Hướng dẫn tổng quan
-├── TASKS.md                # Bảng phân công chi tiết và checklist từng thành viên
-├── .gitignore              # Cấu hình bỏ qua các file build và dữ liệu tạm
-├── src/                    # Mã nguồn C (C11, pthread)
-│   ├── common.h            # Header dùng chung: parse_args, timer, PRNG, cấu trúc dữ liệu (A)
+Week-03/ (pi-montecarlo-lab)
+├── Makefile                # Build automation rules (all, check, bench, tradeoff, plot, clean)
+├── README.md               # Project guide and overview
+├── TASKS.md                # Task management and member checklist
+├── .gitignore              # Ignores build binaries and output data
+├── src/                    # C source files (C11, pthread)
+│   ├── common.h            # Shared header: argument parser, high-res timer, PRNG, structures (A)
 │   ├── pi_single.c         # Approach 1: Single thread baseline (A)
 │   ├── pi_local.c          # Approach 2: Multi-thread Local Accumulation (B)
 │   ├── pi_mutex.c          # Approach 3: Shared Counter with Mutex Lock (C)
-│   ├── pi_mutex_k.c        # Thí nghiệm 6.1: Mutex batching theo chu kỳ k (D)
-│   └── pi_atomic.c         # Multi-thread với chỉ thị phần cứng Atomic Fetch-Add (D)
-├── scripts/                # Kịch bản tự động hóa đo lường và vẽ biểu đồ
-│   ├── run_bench.sh        # Benchmark tự động toàn diện các cấu hình (E)
-│   ├── run_tradeoff.sh     # Thực hiện các thí nghiệm đánh đổi 6.1 & 6.3 (E)
-│   └── plot.py             # Xử lý số liệu và vẽ đồ thị (pandas, matplotlib) (E)
-├── results/                # Lưu trữ file dữ liệu CSV sau khi đo
-├── plots/                  # Lưu trữ các biểu đồ trực quan hóa (.png)
-└── report/                 # Báo cáo kết quả
-    ├── report.md           # Báo cáo hoàn chỉnh của nhóm
-    └── environment.md      # Chi tiết phần cứng và môi trường thực nghiệm
+│   ├── pi_mutex_k.c        # Experiment 6.1: Mutex batching with interval k (D)
+│   └── pi_atomic.c         # Multi-thread lock-free atomic fetch-add (D)
+├── scripts/                # Benchmark automation and visualization
+│   ├── run_bench.sh        # Full benchmark runner across approaches and threads (E)
+│   ├── run_tradeoff.sh     # Trade-off experiments runner (6.1 & 6.3) (E)
+│   └── plot.py             # Data processing and chart generation (pandas, matplotlib) (E)
+├── results/                # Output directory for CSV records
+├── plots/                  # Output directory for exported figures (.png)
+└── report/                 # Laboratory documentation
+    ├── report.md           # Group lab report
+    └── environment.md      # Hardware, OS, and toolchain specification
 ```
 
 ---
 
-## 3. Giao Ước Chung (Contract)
+## 3. Technical Contract
 
-### 3.1 Tham số dòng lệnh thống nhất
-Mọi chương trình trong thư mục `src/` đều tuân theo chuẩn gọi:
+### 3.1 Unified Command-Line Interface
+All executables in `src/` strictly adhere to the following signature:
 ```bash
 ./prog <total_points> <num_threads> <seed> <run_id> [k]
 ```
-- `total_points`: Tổng số điểm Monte Carlo (mặc định: $10^8 = 100000000$).
-- `num_threads`: Số luồng thực thi (ví dụ: $1, 2, 4, 8, 16, \dots$). `pi_single` tự động bỏ qua tham số này.
-- `seed`: Giá trị seed gốc để khởi tạo bộ sinh số ngẫu nhiên.
-- `run_id`: Định danh lần chạy (ví dụ: $1, 2, 3, \dots$).
-- `k`: Tham số chu kỳ đồng bộ (chỉ áp dụng cho `pi_mutex_k`, mặc định $1000$).
+- `total_points`: Total Monte Carlo points to evaluate (default: $10^8 = 100000000$).
+- `num_threads`: Number of worker threads ($1, 2, 4, 8, 16, \dots$). `pi_single` ignores this value.
+- `seed`: Base random seed for PRNG initialization.
+- `run_id`: Execution sequence identifier ($1, 2, 3, \dots$).
+- `k`: Batching frequency (applied solely to `pi_mutex_k`, default: $1000$).
 
-### 3.2 Định dạng đầu ra (CSV Output)
-Mỗi lần chạy chương trình chỉ in **ĐÚNG MỘT DÒNG DUY NHẤT** ra `stdout` theo định dạng:
+### 3.2 Output Format (Standard CSV)
+Each execution prints **EXACTLY ONE LINE** to `stdout`:
 ```csv
 approach,threads,run,time_sec,pi_estimate
 ```
-*Ví dụ:* `local,4,1,0.185240,3.141582000`
+*Example:* `local,4,1,0.185240,3.141582000`
 
 ---
 
-## 4. Hướng Dẫn Sử Dụng
+## 4. Usage Guide
 
-### 4.1 Biên dịch toàn bộ
+### 4.1 Compile Everything
 ```bash
 make
-# Hoặc trên Windows với MinGW: mingw32-make
+# Or on Windows using MinGW: mingw32-make
 ```
-Tất cả 5 tệp thực thi sẽ được tạo trong thư mục `bin/`.
+All 5 binaries will be built into the `bin/` directory.
 
-### 4.2 Kiểm tra nhanh độ chính xác (Smoke Test)
+### 4.2 Run Quick Smoke Test
 ```bash
 make check
 ```
-Lệnh này sẽ chạy thử nhanh 5 chương trình với $N = 10^6$ điểm để kiểm tra ước lượng $\pi \approx 3.1416$.
+Quickly runs all 5 programs with $N = 10^6$ points to ensure valid execution and verify $\pi \approx 3.1416$.
 
-### 4.3 Chạy Benchmark toàn diện
+### 4.3 Run Full Benchmark Suite
 ```bash
 make bench
 ```
-Chạy script `scripts/run_bench.sh`, tự động lưu số liệu vào `results/results.csv` và cấu hình máy vào `report/environment.md`.
+Invokes `scripts/run_bench.sh`, populating `results/results.csv` and logging hardware details into `report/environment.md`.
 
-### 4.4 Chạy thí nghiệm Trade-off
+### 4.4 Run Trade-off Experiments
 ```bash
 make tradeoff
 ```
-Chạy script `scripts/run_tradeoff.sh` để khảo sát chu kỳ $k$ trong `pi_mutex_k`.
+Runs `scripts/run_tradeoff.sh` to evaluate batching frequency $k$.
 
-### 4.5 Vẽ biểu đồ
+### 4.5 Generate Analytical Plots
 ```bash
 make plot
 ```
-Đọc dữ liệu từ `results/`, tính trung bình/độ lệch chuẩn/Speedup/Efficiency và xuất các biểu đồ trực quan vào `plots/`.
+Reads data from `results/`, calculates statistical metrics (mean, std dev, speedup, efficiency), and outputs PNG figures to `plots/`.
 
 ---
 
-## 5. Quy Ước Phối Hợp Git
+## 5. Git Workflow & Collaboration
 
-1. **Phân nhánh độc lập**: Mỗi thành viên tạo nhánh tương ứng từ `main`:
-   - QVinh: `git checkout -b feat/A-common`
-   - Thành viên B: `git checkout -b feat/B-local`
-   - Thành viên C: `git checkout -b feat/C-mutex`
-   - Thành viên D: `git checkout -b feat/D-mutexk-atomic`
-   - Thành viên E: `git checkout -b feat/E-bench-plot`
-2. **Commit rõ ràng**: Tuân thủ conventional commit (ví dụ: `feat(common): implement xorshift64 PRNG`).
-3. **Pull Request & Review**: Mọi thay đổi phải tạo Pull Request vào `main` và có ít nhất 1 thành viên review trước khi merge.
+1. **Feature Branches**: Every member develops on their designated branch:
+   - QVinh: `git checkout feat/A-common`
+   - Member B: `git checkout feat/B-local`
+   - Member C: `git checkout feat/C-mutex`
+   - Member D: `git checkout feat/D-mutexk-atomic`
+   - Member E: `git checkout feat/E-bench-plot`
+2. **Conventional Commits**: Use descriptive commit prefixes (e.g., `feat(common): implement xorshift64 PRNG`).
+3. **Pull Requests & Code Reviews**: Merge into `main` exclusively through Pull Requests requiring at least one peer approval.

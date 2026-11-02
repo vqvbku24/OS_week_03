@@ -12,13 +12,13 @@
 
 #define CACHE_LINE 64
 
-// Cau truc padding 64 bytes de ngan ngua hien tuong false sharing giua cac luong
+// 64-byte padded structure to prevent false sharing between threads on adjacent cache lines
 typedef struct {
     uint64_t value;
     char pad[CACHE_LINE - sizeof(uint64_t)];
 } padded_u64;
 
-// Cau truc luu thong so cau hinh dong lenh
+// Structure to store parsed command-line arguments
 typedef struct {
     uint64_t total;
     int threads;
@@ -27,21 +27,21 @@ typedef struct {
     uint64_t k;
 } config_t;
 
-// In dung mot dong CSV duy nhat ra stdout theo hop dong:
+// Output exactly ONE CSV line to stdout conforming to contract:
 // approach,threads,run,time_sec,pi_estimate
 static inline void print_csv(const char *approach, int threads, int run, double time_sec, double pi) {
     printf("%s,%d,%d,%.6f,%.9f\n", approach, threads, run, time_sec, pi);
 }
 
-// Parse tham so dong lenh thong nhat: ./prog <total_points> <num_threads> <seed> <run_id> [k]
+// Parse command line arguments: ./prog <total_points> <num_threads> <seed> <run_id> [k]
 static inline config_t parse_args(int argc, char **argv) {
     if (argc < 5) {
-        fprintf(stderr, "Su dung: %s <total_points> <num_threads> <seed> <run_id> [k]\n", argv[0]);
-        fprintf(stderr, "  total_points: Tong so diem can tao (vi du: 100000000)\n");
-        fprintf(stderr, "  num_threads : So luong luong (vi du: 1, 2, 4, 8...)\n");
-        fprintf(stderr, "  seed        : Seed goc ngau nhien (vi du: 12345)\n");
-        fprintf(stderr, "  run_id      : So thu tu lan chay (vi du: 1, 2, 3...)\n");
-        fprintf(stderr, "  k           : Chu ky dong bo mutex (tuy chon, mac dinh: 1000)\n");
+        fprintf(stderr, "Usage: %s <total_points> <num_threads> <seed> <run_id> [k]\n", argv[0]);
+        fprintf(stderr, "  total_points: Total Monte Carlo points to generate (e.g., 100000000)\n");
+        fprintf(stderr, "  num_threads : Number of execution threads (e.g., 1, 2, 4, 8...)\n");
+        fprintf(stderr, "  seed        : Base random seed (e.g., 12345)\n");
+        fprintf(stderr, "  run_id      : Iteration/run sequence id (e.g., 1, 2, 3...)\n");
+        fprintf(stderr, "  k           : Mutex batching frequency (optional, default: 1000)\n");
         exit(EXIT_FAILURE);
     }
 
@@ -56,18 +56,18 @@ static inline config_t parse_args(int argc, char **argv) {
     return cfg;
 }
 
-// Lay thoi gian hien tai tinh bang giay
+// Get current timestamp in seconds
 static inline double now_sec(void) {
-    // TODO(A-1): Dung clock_gettime(CLOCK_MONOTONIC) de lay thoi gian chinh xac (QVinh - Thanh vien A).
-    // Goi y:
+    // TODO(A-1): Use clock_gettime(CLOCK_MONOTONIC) to obtain high-resolution timestamp (QVinh - Member A).
+    // Hint:
     //   struct timespec ts;
     //   clock_gettime(CLOCK_MONOTONIC, &ts);
     //   return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-    // Tieu chi: Tra ve gia tri thoi gian chinh xac voi do phan giai cao, khong bi anh huong boi thay doi gio he thong.
+    // Acceptance criteria: Return high-resolution monotonic time without being affected by wall-clock changes.
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(A-1): now_sec() chua hoan thien, dang dung clock_gettime mac dinh hoac tra ve 0.0.\n");
+        fprintf(stderr, "STUB(A-1): now_sec() is incomplete, returning default clock_gettime or 0.0.\n");
     }
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
@@ -76,68 +76,68 @@ static inline double now_sec(void) {
     return 0.0;
 }
 
-// Thuat toan tao so ngau nhien nhanh xorshift64 (tranh dung rand() toan cuc)
+// Fast 64-bit pseudo-random number generator (xorshift64) to avoid global rand() locks
 static inline uint64_t xorshift64(uint64_t *state) {
-    // TODO(A-2): Cai dat xorshift64 chuan voi cac phep dich bit (13, 7, 17); luu y xu ly state != 0 (QVinh - Thanh vien A).
-    // Goi y:
+    // TODO(A-2): Implement standard xorshift64 using bit shifts (13, 7, 17); ensure state != 0 (QVinh - Member A).
+    // Hint:
     //   uint64_t x = *state;
     //   if (x == 0) x = 0x853c49e6748fea9bULL;
     //   x ^= x << 13;
     //   x ^= x >> 7;
     //   x ^= x << 17;
     //   return *state = x;
-    // Tieu chi: Sinh so ngau nhien 64-bit nhanh, chu ky 2^64-1, khong bi treo neu state = 0.
+    // Acceptance criteria: Fast 64-bit PRNG with period 2^64-1, handles state == 0 safely.
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(A-2): xorshift64() chua cai dat xong.\n");
+        fprintf(stderr, "STUB(A-2): xorshift64() is running stub PRNG.\n");
     }
     if (*state == 0) *state = 1;
     *state = *state * 6364136223846793005ULL + 1;
     return *state;
 }
 
-// Chuyen so ngau nhien sang kieu double trong nua khoang [0, 1)
+// Convert pseudo-random 64-bit integer to double in [0, 1)
 static inline double rand01(uint64_t *state) {
-    // TODO(A-3): Chuyen ket qua tu xorshift64 sang double trong [0,1) bang cach lay 53 bit cao (QVinh - Thanh vien A).
-    // Goi y:
+    // TODO(A-3): Convert xorshift64 output to double in [0, 1) using upper 53 bits (QVinh - Member A).
+    // Hint:
     //   return (double)(xorshift64(state) >> 11) * (1.0 / 9007199254740992.0); // 2^53 = 9007199254740992.0
-    // Tieu chi: Tra ve gia tri double dong nhat trong khoang [0, 1).
+    // Acceptance criteria: Returns uniformly distributed double values in [0, 1).
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(A-3): rand01() chua cai dat xong.\n");
+        fprintf(stderr, "STUB(A-3): rand01() is running stub generator.\n");
     }
     return (double)(xorshift64(state) & 0xFFFFFFFFFFFFFULL) / (double)0x10000000000000ULL;
 }
 
-// Chia phan cong viec cho thread thu i tren tong so nthreads
+// Partition total points among nthreads; the last thread receives the remainder
 static inline uint64_t split_work(uint64_t total, int nthreads, int i) {
-    // TODO(A-4): Chia deu tong so diem cho cac thread, thread cuoi cung (i == nthreads - 1) nhan them phan du (QVinh - Thanh vien A).
-    // Goi y:
+    // TODO(A-4): Divide work evenly across threads, last thread (i == nthreads - 1) gets remainder (QVinh - Member A).
+    // Hint:
     //   uint64_t base = total / nthreads;
     //   return (i == nthreads - 1) ? (base + (total % nthreads)) : base;
-    // Tieu chi: Tong so diem tat ca cac thread nhan duoc phai chinh xac bang total.
+    // Acceptance criteria: Sum of work items across all threads must strictly equal total.
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(A-4): split_work() chua tinh phan du cho thread cuoi.\n");
+        fprintf(stderr, "STUB(A-4): split_work() has been called.\n");
     }
     uint64_t base = total / (uint64_t)nthreads;
     return (i == nthreads - 1) ? (base + (total % (uint64_t)nthreads)) : base;
 }
 
-// Khoi tao seed doc lap cho moi luong
+// Generate thread-specific random seed
 static inline uint64_t seed_for_thread(uint64_t base, int i) {
-    // TODO(A-5): Tra ve seed cho thread i dua vao base seed, dam bao seed khac 0 va co tron bit neu can (QVinh - Thanh vien A).
-    // Goi y:
+    // TODO(A-5): Return distinct seed for thread i based on base seed, ensure seed != 0 and mix bits if needed (QVinh - Member A).
+    // Hint:
     //   uint64_t s = base + (uint64_t)i * 0x9e3779b97f4a7c15ULL;
     //   return (s == 0) ? 1 : s;
-    // Tieu chi: Moi thread nhan seed khac biet, khong bi trung lap chuoi so ngau nhien va seed != 0.
+    // Acceptance criteria: Each thread gets a unique non-zero seed with decorrelated sequences.
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(A-5): seed_for_thread() can dam bao tron bit doc lap.\n");
+        fprintf(stderr, "STUB(A-5): seed_for_thread() has been called.\n");
     }
     uint64_t s = base + (uint64_t)i * 0x9e3779b97f4a7c15ULL;
     return (s == 0) ? 1 : s;

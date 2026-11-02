@@ -1,17 +1,18 @@
 /**
  * pi_local.c - Approach 2: Multi-thread with Local Accumulation (Map-Reduce)
- * Nguoi phu trach: Thanh vien B
+ * Assigned Member: Member B
  */
 
 #include "common.h"
 
-// TODO(B-5): Giai thich vi sao dung cau truc padding (padded_u64) trong mang results (Thanh vien B).
-// Giai thich:
-//   Khi cac luong ghi dong thoi vao cac phan tu lien ke cua mot mang, mac du moi luong ghi vao
-//   dia chi khac nhau, nhung neu cac dia chi do nam chung trong mot Cache Line (thuong la 64 bytes),
-//   CPU se phai lien tuc invalidate cache line giua cac core (Cache Coherence Ping-Pong).
-//   Hien tuong nay goi la False Sharing, gay sut giam nghiem trong hieu nang.
-//   Dung padded_u64 dam bao moi phan tu chiem tron 1 Cache Line (64 bytes), triet tieu hoan toan False Sharing.
+// TODO(B-5): Explain why padding structure (padded_u64) is used in the results array (Member B).
+// Explanation:
+//   When multiple threads concurrently write to adjacent elements of an array, even though
+//   each thread writes to a distinct memory address, if those addresses share a single Cache Line
+//   (typically 64 bytes), the CPU must repeatedly invalidate cache lines across cores
+//   (Cache Coherence Ping-Pong). This phenomenon is known as False Sharing and severely degrades
+//   parallel performance. Using padded_u64 ensures each result occupies its own dedicated
+//   64-byte Cache Line, completely eliminating False Sharing.
 
 typedef struct {
     int id;
@@ -23,15 +24,15 @@ typedef struct {
 void *worker(void *arg) {
     thread_arg_t *tdata = (thread_arg_t *)arg;
 
-    // TODO(B-2): Khoi tao RNG rieng biet cho luong nay bang ham seed_for_thread (Thanh vien B).
-    // Goi y:
+    // TODO(B-2): Initialize independent PRNG state for this thread using seed_for_thread (Member B).
+    // Hint:
     //   uint64_t state = seed_for_thread(tdata->seed, tdata->id);
-    // Tieu chi: Moi luong co state doc lap, khong chia se state voi luong khac.
+    // Acceptance criteria: Each thread maintains private state without sharing with other threads.
     uint64_t state = seed_for_thread(tdata->seed, tdata->id);
 
-    // TODO(B-1): Dung BIEN LOCAL local_inside trong vong lap tinh toan, tuyet doi khong ghi
-    // vao mang results trong vong lap. Chi ghi mot lan duy nhat vao results[id].value khi ket thuc (Thanh vien B).
-    // Goi y:
+    // TODO(B-1): Use LOCAL VARIABLE local_inside in the calculation loop, NEVER write to results
+    // array within the inner loop. Only write once to results[id].value upon completion (Member B).
+    // Hint:
     //   uint64_t local_inside = 0;
     //   for (uint64_t i = 0; i < tdata->count; i++) {
     //       double x = rand01(&state);
@@ -39,11 +40,11 @@ void *worker(void *arg) {
     //       if (x * x + y * y <= 1.0) local_inside++;
     //   }
     //   tdata->results[tdata->id].value = local_inside;
-    // Tieu chi: Vong lap cuc nhanh, khong co chi phi truy cap bo nho chia se hay lock.
+    // Acceptance criteria: Extremely fast inner loop with zero shared memory or lock overhead.
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(B-1, B-2): worker trong pi_local dang chay stub.\n");
+        fprintf(stderr, "STUB(B-1, B-2): worker in pi_local is running.\n");
     }
 
     uint64_t local_inside = 0;
@@ -67,15 +68,15 @@ int main(int argc, char **argv) {
     padded_u64 *results = malloc(sizeof(padded_u64) * (size_t)cfg.threads);
 
     if (!threads || !args || !results) {
-        fprintf(stderr, "Loi: Khong the cap phat bo nho cho luong.\n");
+        fprintf(stderr, "Error: Failed to allocate memory for threads.\n");
         exit(EXIT_FAILURE);
     }
 
-    // Do thoi gian tinh toan (bat dau tu luc tao thread den khi join va reduce xong)
+    // Time computational workload from thread creation to completion of join & reduce
     double t_start = now_sec();
 
-    // TODO(B-3): Chia deu khoi luong cong viec bang split_work va tao cac luong pthread_create (Thanh vien B).
-    // Goi y:
+    // TODO(B-3): Partition workload evenly using split_work and spawn threads with pthread_create (Member B).
+    // Hint:
     //   for (int i = 0; i < cfg.threads; i++) {
     //       args[i].id = i;
     //       args[i].count = split_work(cfg.total, cfg.threads, i);
@@ -83,7 +84,7 @@ int main(int argc, char **argv) {
     //       args[i].results = results;
     //       pthread_create(&threads[i], NULL, worker, &args[i]);
     //   }
-    // Tieu chi: Tao dung so luong luong, moi luong nhan du so diem can tinh.
+    // Acceptance criteria: Spawns exact number of threads, correctly distributing all points.
     for (int i = 0; i < cfg.threads; i++) {
         args[i].id = i;
         args[i].count = split_work(cfg.total, cfg.threads, i);
@@ -92,15 +93,15 @@ int main(int argc, char **argv) {
         pthread_create(&threads[i], NULL, worker, &args[i]);
     }
 
-    // TODO(B-4): Join tat ca cac luong va thuc hien Reduce (cong don cac results[i].value), sau do tinh pi (Thanh vien B).
-    // Goi y:
+    // TODO(B-4): Join all threads, perform Reduce phase (summing results[i].value), and compute pi (Member B).
+    // Hint:
     //   uint64_t total_inside = 0;
     //   for (int i = 0; i < cfg.threads; i++) {
     //       pthread_join(threads[i], NULL);
     //       total_inside += results[i].value;
     //   }
     //   double pi = 4.0 * (double)total_inside / (double)cfg.total;
-    // Tieu chi: Cho day du tat ca luong ket thuc, thu thap ket qua chinh xac va tinh pi xap xi 3.1416.
+    // Acceptance criteria: Safely awaits all threads, aggregates final count, computes pi ~ 3.1416.
     uint64_t total_inside = 0;
     for (int i = 0; i < cfg.threads; i++) {
         pthread_join(threads[i], NULL);
@@ -111,12 +112,12 @@ int main(int argc, char **argv) {
     double t_end = now_sec();
     double time_sec = t_end - t_start;
 
-    // Giai phong tai nguyen
+    // Free resources
     free(threads);
     free(args);
     free(results);
 
-    // In dung 1 dong CSV ra stdout
+    // Print single CSV row to stdout
     print_csv("local", cfg.threads, cfg.run, time_sec, pi);
 
     return 0;

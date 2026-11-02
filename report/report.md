@@ -1,74 +1,74 @@
-# Báo Cáo Bài Lab: Ước Lượng Số π Bằng Phương Pháp Monte Carlo Với Đa Luồng
+# Laboratory Report: Estimating $\pi$ via Monte Carlo Method in Multi-Threaded Environments
 
-**Nhóm thực hiện**: 5 thành viên
-- **Thành viên A**: QVinh (Nền tảng, `common.h`, `pi_single.c`)
-- **Thành viên B**: (Approach 2: `pi_local.c`, phân tích scaling)
-- **Thành viên C**: (Approach 3: `pi_mutex.c`, phân tích contention)
-- **Thành viên D**: (Biến thể `pi_mutex_k.c`, `pi_atomic.c`, trade-off k)
-- **Thành viên E**: (Benchmark, đồ thị, tổng hợp báo cáo)
-
----
-
-## 1. Giới thiệu và Môi trường thử nghiệm
-*Người phụ trách: Thành viên E*
-
-<!-- TODO(E-12): Viết phần giới thiệu bài toán Monte Carlo tính số pi và tóm tắt cấu hình thực nghiệm từ report/environment.md (Thành viên E) -->
-
-### 1.1 Bài toán tính π bằng Monte Carlo
-- Nguyên lý: Sinh ngẫu nhiên $N$ điểm đồng đều $(x, y) \in [0, 1] \times [0, 1]$.
-- Điều kiện điểm nằm trong 1/4 hình tròn đơn vị: $x^2 + y^2 \le 1.0$.
-- Tỉ số diện tích: $\frac{\text{Diện tích 1/4 hình tròn}}{\text{Diện tích hình vuông đơn vị}} = \frac{\frac{\pi \times 1^2}{4}}{1 \times 1} = \frac{\pi}{4}$.
-- Công thức ước lượng: $\pi \approx 4 \times \frac{\text{Số điểm rơi vào hình tròn}}{\text{Tổng số điểm sinh ra}} = 4 \times \frac{M}{N}$.
-
-### 1.2 Môi trường thực nghiệm
-- Chi tiết xem file [`environment.md`](environment.md).
+**Project Group**: 5 Members
+- **Member A**: QVinh (Platform Architecture, `src/common.h`, `src/pi_single.c`)
+- **Member B**: (Approach 2: `src/pi_local.c`, Thread Scaling analysis)
+- **Member C**: (Approach 3: `src/pi_mutex.c`, Contention & Serialization analysis)
+- **Member D**: (Variants: `src/pi_mutex_k.c`, `src/pi_atomic.c`, Trade-off $k$ analysis)
+- **Member E**: (Benchmarking automation, Plotting, Report synthesis)
 
 ---
 
-## 2. Thiết kế các Phương Pháp (Approaches)
+## 1. Introduction and Experimental Setup
+*Assigned Member: Member E*
+
+<!-- TODO(E-12): Write introduction to Monte Carlo pi estimation and summarize system setup from report/environment.md (Member E) -->
+
+### 1.1 Monte Carlo Principle for Estimating $\pi$
+- Generate $N$ uniform random points $(x, y) \in [0, 1] \times [0, 1]$.
+- Condition for a point falling inside the quarter unit circle: $x^2 + y^2 \le 1.0$.
+- Geometric area ratio: $\frac{\text{Quarter circle area}}{\text{Unit square area}} = \frac{\frac{\pi \times 1^2}{4}}{1 \times 1} = \frac{\pi}{4}$.
+- Estimation formula: $\pi \approx 4 \times \frac{\text{Points inside circle}}{\text{Total points generated}} = 4 \times \frac{M}{N}$.
+
+### 1.2 System Environment
+- Detailed hardware and operating system metrics are documented in [`environment.md`](environment.md).
+
+---
+
+## 2. Design of Computational Approaches
 
 ### 2.1 Approach 1: Single Thread (Baseline)
-*Người phụ trách: QVinh (Thành viên A)*
+*Assigned Member: QVinh (Member A)*
 
-<!-- TODO(A-8): Trình bày thiết kế Single Thread: vòng lặp sinh số, RNG xorshift64, không có đa luồng, làm mốc baseline đo lường (QVinh - Thành viên A) -->
+<!-- TODO(A-8): Present Single-Thread design: random number generation loop, xorshift64 PRNG, lack of multi-threading overhead, role as experimental baseline (QVinh - Member A) -->
 
 ### 2.2 Approach 2: Multi-thread Local Accumulation (Map-Reduce)
-*Người phụ trách: Thành viên B*
+*Assigned Member: Member B*
 
-<!-- TODO(B-6): Trình bày thiết kế Map-Reduce: chia việc cho các luong, biến cục bộ local_inside, mảng kết quả dùng padding padded_u64 triệt tiêu False Sharing, giai đoạn Reduce (Thành viên B) -->
+<!-- TODO(B-6): Present Map-Reduce architecture: workload partitioning, private local_inside counters, padded_u64 array mitigating False Sharing, final reduction phase (Member B) -->
 
 ### 2.3 Approach 3: Shared Counter with Mutex Lock
-*Người phụ trách: Thành viên C*
+*Assigned Member: Member C*
 
-<!-- TODO(C-4): Trình bày thiết kế Shared Counter: một biến shared_inside toàn cục, pthread_mutex_lock/unlock bao quanh mỗi lần tăng biến, nguyên nhân gây thắt nút cổ chai (Thành viên C) -->
+<!-- TODO(C-4): Present Shared Counter design: single global shared_inside counter, pthread_mutex_lock/unlock around every circle hit, structural performance bottleneck (Member C) -->
 
-### 2.4 Biến thể Mutex theo chu kỳ k và Atomic
-*Người phụ trách: Thành viên D*
+### 2.4 Mutex Batching ($k$) and Lock-Free Atomic Variants
+*Assigned Member: Member D*
 
-<!-- TODO(D-6): Trình bày thiết kế biến thể: gom nhóm cập nhật theo batch k điểm (pi_mutex_k) và sử dụng chỉ thị phần cứng không khóa __atomic_fetch_add (pi_atomic) (Thành viên D) -->
-
----
-
-## 3. Phương Pháp Đo Lường & Đảm Bảo Tính Nhất Quán
-*Người phụ trách: QVinh (Thành viên A)*
-
-<!-- TODO(A-9): Mô tả chi tiết phương pháp đo:
-  - Sử dụng clock_gettime(CLOCK_MONOTONIC) để đo chính xác phần tính toán (không đo parse args, cấp phát, in CSV).
-  - Cố định seed gốc và công thức sinh seed độc lập cho từng luồng.
-  - Số lần lặp lại (>= 5 lần) để loại bỏ nhiễu và tính độ lệch chuẩn.
-  - Loại bỏ hoàn toàn rand()/srand() do tranh chấp trạng thái toàn cục. (QVinh - Thành viên A) -->
+<!-- TODO(D-6): Present architectural variants: batching updates every k points (pi_mutex_k) and hardware-level atomic instructions __atomic_fetch_add (pi_atomic) (Member D) -->
 
 ---
 
-## 4. Kết Quả Thực Nghiệm
-*Người phụ trách: Thành viên E*
+## 3. Measurement Methodology & Experimental Rigor
+*Assigned Member: QVinh (Member A)*
 
-<!-- TODO(E-13): Đưa bảng số liệu tổng hợp (thời gian trung bình, độ lệch chuẩn, speedup, efficiency) và chèn các biểu đồ từ thư mục plots/ (Thành viên E) -->
+<!-- TODO(A-9): Describe measurement methodology:
+  - Employ clock_gettime(CLOCK_MONOTONIC) measuring strictly the computation loop (excluding parsing, allocations, and I/O).
+  - Seed independence guarantees per thread via arithmetic mixing.
+  - Repetition policy (>= 5 runs) to eliminate noise and calculate standard deviations.
+  - Strict avoidance of global rand()/srand() state locks. (QVinh - Member A) -->
 
-### 4.1 Bảng số liệu tổng hợp
-*(Được trích xuất từ `results/results.csv` sau khi chạy benchmark)*
+---
 
-| Approach | Threads | Thời gian trung bình (s) | Độ lệch chuẩn (s) | Speedup | Parallel Efficiency |
+## 4. Experimental Results
+*Assigned Member: Member E*
+
+<!-- TODO(E-13): Tabulate benchmark results (mean execution times, standard deviations, speedup, efficiency) and embed figures from plots/ (Member E) -->
+
+### 4.1 Summary Table
+*(Extracted from `results/results.csv` after running the benchmark suite)*
+
+| Approach | Threads | Mean Time (s) | Std Dev (s) | Speedup | Parallel Efficiency |
 |---|---|---|---|---|---|
 | single | 1 | ... | ... | 1.00x | 100% |
 | local | 2 | ... | ... | ... | ... |
@@ -76,76 +76,76 @@
 | mutex | 2 | ... | ... | ... | ... |
 | atomic | 2 | ... | ... | ... | ... |
 
-### 4.2 Các biểu đồ thực nghiệm
-- **Biểu đồ thời gian thực thi theo số luồng**: `plots/time_vs_threads.png`
-- **Biểu đồ Speedup theo số luồng**: `plots/speedup_vs_threads.png`
-- **Biểu đồ Parallel Efficiency**: `plots/efficiency_vs_threads.png`
-- **Biểu đồ Trade-off tần suất đồng bộ k**: `plots/tradeoff_k.png`
-- **Biểu đồ So sánh Local vs Mutex**: `plots/comparison_local_vs_mutex.png`
+### 4.2 Visualization Figures
+- **Execution Time vs. Thread Count**: `plots/time_vs_threads.png`
+- **Speedup vs. Thread Count**: `plots/speedup_vs_threads.png`
+- **Parallel Efficiency vs. Thread Count**: `plots/efficiency_vs_threads.png`
+- **Synchronization Trade-off vs. Batch Size $k$**: `plots/tradeoff_k.png`
+- **Direct Comparison: Local Accumulation vs. Mutex**: `plots/comparison_local_vs_mutex.png`
 
 ---
 
-## 5. Phân Tích Chuyên Sâu
+## 5. In-Depth Analysis
 
-### 5.2.A Vì sao Speedup không tuyến tính?
-*Người phụ trách: QVinh (Thành viên A)*
+### 5.2.A Why is Parallel Speedup Non-Linear?
+*Assigned Member: QVinh (Member A)*
 
-<!-- TODO(A-10): Phân tích định luật Amdahl, chi phí tạo và hủy pthread (overhead), giới hạn băng thông bộ nhớ và hiện tượng diminishing returns khi số luồng tăng (QVinh - Thành viên A) -->
+<!-- TODO(A-10): Analyze Amdahl's Law, thread creation/teardown costs, memory bandwidth saturation, and diminishing returns as thread count scales (QVinh - Member A) -->
 
-### 5.2.B Điểm bão hòa (Saturation Point)
-*Người phụ trách: Thành viên B*
+### 5.2.B Saturation Point and Physical Core Count
+*Assigned Member: Member B*
 
-<!-- TODO(B-7): Phân tích điểm bão hòa của hiệu năng, mối liên hệ trực tiếp với số nhân vật lý/logic của CPU máy thử nghiệm (Thành viên B) -->
+<!-- TODO(B-7): Analyze performance saturation points and their correlation with physical/logical CPU cores on the host machine (Member B) -->
 
-### 5.2.C Hiện tượng Oversubscription & Chi phí Context Switch
-*Người phụ trách: Thành viên B*
+### 5.2.C Oversubscription and Context Switching Overhead
+*Assigned Member: Member B*
 
-<!-- TODO(B-8): Phân tích hiện tượng số luồng vượt quá số CPU core (vd: 32, 64, 128 luồng trên máy 4-8 core): chi phí context switch, tranh chấp scheduler và cache thrashing (Thành viên B) -->
+<!-- TODO(B-8): Investigate scenarios where thread counts exceed CPU core capacity (e.g., 32, 64, 128 threads on an 8-core CPU): involuntary context switching, kernel scheduling overhead, and cache thrashing (Member B) -->
 
-### 5.2.D Chi phí Đồng Bộ & Serialization (Mutex Contention)
-*Người phụ trách: Thành viên C*
+### 5.2.D Synchronization Overhead & Serialization (Mutex Contention)
+*Assigned Member: Member C*
 
-<!-- TODO(C-5): Phân tích nguyên nhân Approach 3 (Mutex) chạy chậm hơn hàng trăm lần so với Approach 2: hiện tượng serialization luồng, hàng đợi chờ lock, suy thoái từ đa luồng thành đơn luồng bị phạt nặng (Thành viên C) -->
+<!-- TODO(C-5): Analyze why Approach 3 is orders of magnitude slower than Approach 2: thread serialization, sleep/wake queue penalties, and degradation of parallel execution into penalized sequential execution (Member C) -->
 
-### 5.2.E Sự suy giảm Hiệu Suất Song Song (Parallel Efficiency)
-*Người phụ trách: Thành viên E*
+### 5.2.E Decay of Parallel Efficiency
+*Assigned Member: Member E*
 
-<!-- TODO(E-14): Phân tích công thức Efficiency = Speedup / n, giải thích vì sao khi số luồng tăng thì efficiency giảm dần theo quy luật kinh tế lợi tức giảm dần (Diminishing returns) (Thành viên E) -->
-
----
-
-## 6. Đánh Giá Trade-Off (Đánh Đổi Hiệu Năng)
-
-### 6.1 Trade-Off Tần Suất Đồng Bộ (Chu kỳ $k$)
-*Người phụ trách: Thành viên D*
-
-<!-- TODO(D-7): Phân tích kết quả thí nghiệm 6.1 từ results/tradeoff_k.csv:
-  - Khi k = 1: Chi phí đồng bộ cao nhất, tương đương mutex thông thường.
-  - Khi k tăng (10 -> 1000 -> 1000000): Tần suất lock giảm, thời gian tiệm cận dần Approach 2 (Local).
-  - Đưa ra khuyến nghị giá trị k tối ưu để cân bằng giữa độ trễ cập nhật và hiệu năng. (Thành viên D) -->
-
-### 6.2 Phân tích Thread Scaling
-*Người phụ trách: Thành viên B*
-
-<!-- TODO(B-9): Đánh giá 3 giai đoạn của đồ thị Scaling trong Approach 2:
-  - Giai đoạn 1: Threads < Cores (Tăng tốc mạnh).
-  - Giai đoạn 2: Threads ≈ Cores (Bình nguyên - Plateau).
-  - Giai đoạn 3: Threads > Cores (Bão hòa hoặc suy giảm do Oversubscription). (Thành viên B) -->
-
-### 6.3 Local Accumulation vs Shared Counter
-*Người phụ trách: Thành viên C*
-
-<!-- TODO(C-6): So sánh đối đầu giữa kiến trúc chia sẻ (Shared state) và kiến trúc không chia sẻ (Share-nothing / Local state) dựa trên dữ liệu đo lường thực tế (Thành viên C) -->
+<!-- TODO(E-14): Formulate Parallel Efficiency = Speedup / n, discussing why efficiency progressively declines as thread count increases according to the law of diminishing returns (Member E) -->
 
 ---
 
-## 7. Best Practices & Kết Luận
-*Người phụ trách: Toàn nhóm (Thành viên E tổng hợp)*
+## 6. Trade-Off Analysis
 
-<!-- TODO(E-15): Tổng hợp các nguyên tắc thiết kế lập trình đa luồng rút ra từ bài lab (Best Practices) và kết luận bài toán (Thành viên E tổng hợp) -->
-- **Tránh chia sẻ biến trong vòng lặp tính toán**: Luôn ưu tiên Local Accumulation và cấu trúc Map-Reduce.
-- **Triệt tiêu False Sharing**: Chú ý kích thước Cache Line (64 bytes) và cấu trúc padding.
-- **Lựa chọn cơ chế đồng bộ phù hợp**:
-  - Không khóa (Lock-free) > Gom nhóm (Batching) > Khóa cục bộ > Khóa liên tục.
-- **RNG độc lập**: Tuyệt đối không dùng các hàm có trạng thái chia sẻ toàn cục như `rand()`, mỗi thread phải có PRNG riêng biệt (`xorshift64`).
-- **Xác định ngưỡng luồng tối ưu**: Giới hạn số worker thread không vượt quá số core CPU vật lý để tránh oversubscription.
+### 6.1 Synchronization Frequency Trade-Off (Batch Interval $k$)
+*Assigned Member: Member D*
+
+<!-- TODO(D-7): Analyze results from results/tradeoff_k.csv:
+  - When k = 1: Worst-case synchronization overhead identical to Approach 3.
+  - When k scales (10 -> 1000 -> 1000000): Dramatic drop in lock contention, runtime converges towards Approach 2 (Local).
+  - Recommend optimal k balance point between update responsiveness and peak throughput. (Member D) -->
+
+### 6.2 Thread Scaling Regimes
+*Assigned Member: Member B*
+
+<!-- TODO(B-9): Characterize the 3 phases of scaling in Approach 2:
+  - Phase 1: Threads < Physical Cores (Linear/sub-linear speedup).
+  - Phase 2: Threads ≈ Cores (Plateau regime).
+  - Phase 3: Threads > Cores (Saturation or degradation due to Oversubscription). (Member B) -->
+
+### 6.3 Local Accumulation vs. Shared Counter
+*Assigned Member: Member C*
+
+<!-- TODO(C-6): Provide comprehensive head-to-head empirical comparison between Share-Nothing (Local state) and Shared-State (Mutex-locked) architectures (Member C) -->
+
+---
+
+## 7. Best Practices & Conclusion
+*Assigned Member: Entire Group (Synthesized by Member E)*
+
+<!-- TODO(E-15): Synthesize multi-threaded software engineering principles established through this laboratory investigation (Synthesized by Member E) -->
+- **Avoid Shared State in Inner Loops**: Always favor Local Accumulation and Map-Reduce paradigms.
+- **Eliminate False Sharing**: Respect Cache Line boundaries (64 bytes) using explicit padding structures.
+- **Select Concurrency Primitives Deliberately**:
+  - Lock-free / Share-nothing > Batching > Coarse-grained Locks > Fine-grained Unbatched Locks.
+- **Thread-Local PRNG**: Avoid global pseudo-random state locks (such as `rand()`); enforce thread-private generators (`xorshift64`).
+- **Optimal Concurrency Bounds**: Restrict worker threads to available physical cores to prevent harmful OS oversubscription.

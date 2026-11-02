@@ -1,6 +1,6 @@
 /**
  * pi_mutex_k.c - Trade-off 6.1: Mutex synchronization frequency (batching every k points)
- * Nguoi phu trach: Thanh vien D
+ * Assigned Member: Member D
  */
 
 #include "common.h"
@@ -22,17 +22,17 @@ void *worker(void *arg) {
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(D-1, D-2): worker trong pi_mutex_k dang dong bo theo chu ky k.\n");
+        fprintf(stderr, "STUB(D-1, D-2): worker in pi_mutex_k is running with batch size k.\n");
     }
 
     uint64_t local_inside = 0;
     uint64_t k_batch = tdata->k;
     if (k_batch == 0) k_batch = 1;
 
-    // TODO(D-1): Moi thread dem local_inside, cu moi khi local_inside dat k_batch diem thi lock -> cong vao shared_inside -> unlock -> reset local_inside (Thanh vien D).
-    // TODO(D-2): Xu ly dung phan du con lai sau khi ket thuc vong lap, tranh lam mat diem khi local_inside con du < k (Thanh vien D).
-    // TODO(D-3): Kiem tra tinh chat dac biet: khi k = 1 hanh vi tuong duong pi_mutex; khi k rat lon (>= count) hanh vi tuong duong pi_local (Thanh vien D).
-    // Goi y:
+    // TODO(D-1): Each thread accumulates into local_inside; upon reaching k_batch hits, lock -> add to shared_inside -> unlock -> reset local_inside (Member D).
+    // TODO(D-2): Properly flush residual hits after loop completion, avoiding dropped counts when local_inside < k (Member D).
+    // TODO(D-3): Verify edge behaviors: when k = 1 behavior matches pi_mutex; when k is large (>= count) behavior matches pi_local (Member D).
+    // Hint:
     //   for (uint64_t i = 0; i < tdata->count; i++) {
     //       double x = rand01(&state);
     //       double y = rand01(&state);
@@ -65,7 +65,7 @@ void *worker(void *arg) {
         }
     }
 
-    // Xu ly phan du cuoi
+    // Flush residual hits
     if (local_inside > 0) {
         pthread_mutex_lock(&lock);
         shared_inside += local_inside;
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
     config_t cfg = parse_args(argc, argv);
 
     if (pthread_mutex_init(&lock, NULL) != 0) {
-        fprintf(stderr, "Loi: Khong the khoi tao pthread_mutex.\n");
+        fprintf(stderr, "Error: Failed to initialize pthread_mutex.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     thread_arg_t *args = malloc(sizeof(thread_arg_t) * (size_t)cfg.threads);
 
     if (!threads || !args) {
-        fprintf(stderr, "Loi: Khong the cap phat bo nho cho luong.\n");
+        fprintf(stderr, "Error: Failed to allocate memory for threads.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
     free(threads);
     free(args);
 
-    // Dinh dang ten approach: mutex_k<k> (vi du: mutex_k1000)
+    // Format approach name as mutex_k<k> (e.g., mutex_k1000)
     char approach_name[64];
     snprintf(approach_name, sizeof(approach_name), "mutex_k%" PRIu64, cfg.k);
 

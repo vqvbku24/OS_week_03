@@ -5,6 +5,7 @@ LDFLAGS = -pthread -lm
 BIN_DIR = bin
 SRC_DIR = src
 
+# Auto-detect OS executable extension and shell commands
 ifeq ($(OS),Windows_NT)
     EXE = .exe
     MKDIR_BIN = if not exist $(BIN_DIR) mkdir $(BIN_DIR)
@@ -36,15 +37,15 @@ $(BIN_DIR)/%$(EXE): $(SRC_DIR)/%.c $(SRC_DIR)/common.h
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
 check: all
-	@echo === Kiem tra nhanh pi_single ===
+	@echo === Quick Smoke Test: pi_single ===
 	@$(BIN_DIR)/pi_single$(EXE) 1000000 1 12345 1
-	@echo === Kiem tra nhanh pi_local ===
+	@echo === Quick Smoke Test: pi_local ===
 	@$(BIN_DIR)/pi_local$(EXE) 1000000 2 12345 1
-	@echo === Kiem tra nhanh pi_mutex ===
+	@echo === Quick Smoke Test: pi_mutex ===
 	@$(BIN_DIR)/pi_mutex$(EXE) 1000000 2 12345 1
-	@echo === Kiem tra nhanh pi_mutex_k ===
+	@echo === Quick Smoke Test: pi_mutex_k ===
 	@$(BIN_DIR)/pi_mutex_k$(EXE) 1000000 2 12345 1 1000
-	@echo === Kiem tra nhanh pi_atomic ===
+	@echo === Quick Smoke Test: pi_atomic ===
 	@$(BIN_DIR)/pi_atomic$(EXE) 1000000 2 12345 1
 
 bench: all

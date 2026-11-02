@@ -1,32 +1,31 @@
 /**
  * pi_atomic.c - Multi-thread with Atomic Operations (Lock-free approach)
- * Nguoi phu trach: Thanh vien D
+ * Assigned Member: Member D
  *
- * TODO(D-5): Ghi chu so sanh Mutex vs Atomic vs Local trong comment dau file (Thanh vien D).
+ * TODO(D-5): Document comparison among Mutex vs Atomic vs Local in header comment (Member D).
  *
- * SO SANH CAC PHUONG PHAP DONG BO:
+ * SYNCHRONIZATION METHODS COMPARISON:
  * 1. Mutex (pi_mutex.c):
- *    - Hoat dong o cap do OS / pthread runtime.
- *    - Khi xay ra tranh chap (contention), cac thread bi block, gay context switch, tieu ton
- *      hang ngan chu ky CPU cho moi lan ngu/thuc day. Day la phuong phap cham nhat khi tranh chap cao.
+ *    - Operates at OS / pthread runtime level.
+ *    - Under high contention, threads are blocked and put to sleep, causing context switches
+ *      that waste thousands of CPU cycles per sleep/wake transition. Slowest under high contention.
  *
  * 2. Atomic (pi_atomic.c):
- *    - Su dung chi thi phan cung nguyen tu truc tiep (nhu LOCK XADD tren x86).
- *    - Khong can vao kernel, khong bi context switch nen nhanh hon dang ke so voi mutex.
- *    - Tuy nhien, khi moi diem trong deu atomic add vao cung mot bien, cac core lien tuc tranh chap
- *      quyen ghi doc quyen len cache line chua bien do (Cache Invalidation & Bus Traffic).
- *      Hien tuong nay van gay nghen duong truyen cache coherence va han che kha nang scale.
+ *    - Utilizes hardware-level atomic instructions (such as LOCK XADD on x86).
+ *    - Avoids kernel transitions and context switches, significantly faster than mutexes.
+ *    - However, repeatedly atomic-adding into a single shared address forces cores to invalidate
+ *      each other's cache lines (Cache Coherence Bus Traffic), limiting parallel scalability.
  *
  * 3. Local Accumulation (pi_local.c):
- *    - Khong chia se bien, khong lock, khong atomic trong vong lap chinh.
- *    - Moi thread doc quyen ghi vao cache L1/L2 cuc bo cua core minh.
- *    - Chi can mot buoc Reduce don gian cuoi cung.
- *    - Day la giai phap toi uu nhat ca ve thoi gian thuc thi lan parallel speedup.
+ *    - No shared counter, no lock, and no atomic operations inside the hot computation loop.
+ *    - Each thread writes exclusively to its dedicated L1/L2 cache line.
+ *    - Requires only a single fast Reduce step after joining.
+ *    - Optimal strategy in both execution wall-clock time and parallel speedup.
  */
 
 #include "common.h"
 
-// Bien chia se toan cuc dung cho phep toan nguyen tu
+// Global shared counter updated with atomic primitives
 static uint64_t shared_inside = 0;
 
 typedef struct {
@@ -42,11 +41,11 @@ void *worker(void *arg) {
     static int warned = 0;
     if (!warned) {
         warned = 1;
-        fprintf(stderr, "STUB(D-4): worker trong pi_atomic dang su dung __atomic_fetch_add.\n");
+        fprintf(stderr, "STUB(D-4): worker in pi_atomic is running using __atomic_fetch_add.\n");
     }
 
-    // TODO(D-4): Dung __atomic_fetch_add(&shared_inside, 1, __ATOMIC_RELAXED) thay cho mutex moi khi diem roi vao hinh tron (Thanh vien D).
-    // Goi y:
+    // TODO(D-4): Use __atomic_fetch_add(&shared_inside, 1, __ATOMIC_RELAXED) in place of mutex on each circle hit (Member D).
+    // Hint:
     //   for (uint64_t i = 0; i < tdata->count; i++) {
     //       double x = rand01(&state);
     //       double y = rand01(&state);
@@ -54,7 +53,7 @@ void *worker(void *arg) {
     //           __atomic_fetch_add(&shared_inside, 1, __ATOMIC_RELAXED);
     //       }
     //   }
-    // Tieu chi: Phep cong duoc bao dam nguyen tu (atomic), khong bi race condition, tranh lock overhead.
+    // Acceptance criteria: Atomic increment guarantees correct sum without race conditions or lock overhead.
     for (uint64_t i = 0; i < tdata->count; i++) {
         double x = rand01(&state);
         double y = rand01(&state);
@@ -75,7 +74,7 @@ int main(int argc, char **argv) {
     thread_arg_t *args = malloc(sizeof(thread_arg_t) * (size_t)cfg.threads);
 
     if (!threads || !args) {
-        fprintf(stderr, "Loi: Khong the cap phat bo nho cho luong.\n");
+        fprintf(stderr, "Error: Failed to allocate memory for threads.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -99,7 +98,7 @@ int main(int argc, char **argv) {
     free(threads);
     free(args);
 
-    // In dung 1 dong CSV ra stdout
+    // Output single CSV row
     print_csv("atomic", cfg.threads, cfg.run, time_sec, pi);
 
     return 0;

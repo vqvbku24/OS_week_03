@@ -56,91 +56,51 @@ static inline config_t parse_args(int argc, char **argv) {
     return cfg;
 }
 
-// Get current timestamp in seconds
+// Get current monotonic timestamp in seconds
 static inline double now_sec(void) {
-    // TODO(A-1): Use clock_gettime(CLOCK_MONOTONIC) to obtain high-resolution timestamp (QVinh - Member A).
-    // Hint:
-    //   struct timespec ts;
-    //   clock_gettime(CLOCK_MONOTONIC, &ts);
-    //   return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-    // Acceptance criteria: Return high-resolution monotonic time without being affected by wall-clock changes.
-    static int warned = 0;
-    if (!warned) {
-        warned = 1;
-        fprintf(stderr, "STUB(A-1): now_sec() is incomplete, returning default clock_gettime or 0.0.\n");
-    }
     struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-        return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        perror("clock_gettime");
+        return 0.0;
     }
-    return 0.0;
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
 // Fast 64-bit pseudo-random number generator (xorshift64) to avoid global rand() locks
 static inline uint64_t xorshift64(uint64_t *state) {
-    // TODO(A-2): Implement standard xorshift64 using bit shifts (13, 7, 17); ensure state != 0 (QVinh - Member A).
-    // Hint:
-    //   uint64_t x = *state;
-    //   if (x == 0) x = 0x853c49e6748fea9bULL;
-    //   x ^= x << 13;
-    //   x ^= x >> 7;
-    //   x ^= x << 17;
-    //   return *state = x;
-    // Acceptance criteria: Fast 64-bit PRNG with period 2^64-1, handles state == 0 safely.
-    static int warned = 0;
-    if (!warned) {
-        warned = 1;
-        fprintf(stderr, "STUB(A-2): xorshift64() is running stub PRNG.\n");
+    uint64_t x = *state;
+    if (x == 0) {
+        x = 0x853c49e6748fea9bULL;
     }
-    if (*state == 0) *state = 1;
-    *state = *state * 6364136223846793005ULL + 1;
-    return *state;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    *state = x;
+    return x;
 }
 
-// Convert pseudo-random 64-bit integer to double in [0, 1)
+// Convert pseudo-random 64-bit integer to double uniformly in [0, 1) using upper 53 bits
 static inline double rand01(uint64_t *state) {
-    // TODO(A-3): Convert xorshift64 output to double in [0, 1) using upper 53 bits (QVinh - Member A).
-    // Hint:
-    //   return (double)(xorshift64(state) >> 11) * (1.0 / 9007199254740992.0); // 2^53 = 9007199254740992.0
-    // Acceptance criteria: Returns uniformly distributed double values in [0, 1).
-    static int warned = 0;
-    if (!warned) {
-        warned = 1;
-        fprintf(stderr, "STUB(A-3): rand01() is running stub generator.\n");
-    }
-    return (double)(xorshift64(state) & 0xFFFFFFFFFFFFFULL) / (double)0x10000000000000ULL;
+    return (double)(xorshift64(state) >> 11) * (1.0 / 9007199254740992.0); // 2^53 = 9007199254740992.0
 }
 
 // Partition total points among nthreads; the last thread receives the remainder
 static inline uint64_t split_work(uint64_t total, int nthreads, int i) {
-    // TODO(A-4): Divide work evenly across threads, last thread (i == nthreads - 1) gets remainder (QVinh - Member A).
-    // Hint:
-    //   uint64_t base = total / nthreads;
-    //   return (i == nthreads - 1) ? (base + (total % nthreads)) : base;
-    // Acceptance criteria: Sum of work items across all threads must strictly equal total.
-    static int warned = 0;
-    if (!warned) {
-        warned = 1;
-        fprintf(stderr, "STUB(A-4): split_work() has been called.\n");
+    if (nthreads <= 0 || i < 0 || i >= nthreads) {
+        return 0;
     }
     uint64_t base = total / (uint64_t)nthreads;
-    return (i == nthreads - 1) ? (base + (total % (uint64_t)nthreads)) : base;
+    uint64_t rem  = total % (uint64_t)nthreads;
+    return (i == nthreads - 1) ? (base + rem) : base;
 }
 
-// Generate thread-specific random seed
+// Generate an independent, non-zero per-thread random seed using SplitMix64 mixing
 static inline uint64_t seed_for_thread(uint64_t base, int i) {
-    // TODO(A-5): Return distinct seed for thread i based on base seed, ensure seed != 0 and mix bits if needed (QVinh - Member A).
-    // Hint:
-    //   uint64_t s = base + (uint64_t)i * 0x9e3779b97f4a7c15ULL;
-    //   return (s == 0) ? 1 : s;
-    // Acceptance criteria: Each thread gets a unique non-zero seed with decorrelated sequences.
-    static int warned = 0;
-    if (!warned) {
-        warned = 1;
-        fprintf(stderr, "STUB(A-5): seed_for_thread() has been called.\n");
-    }
-    uint64_t s = base + (uint64_t)i * 0x9e3779b97f4a7c15ULL;
-    return (s == 0) ? 1 : s;
+    uint64_t z = base + (uint64_t)i + 0x9e3779b97f4a7c15ULL;
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    z = z ^ (z >> 31);
+    return (z == 0) ? 0x853c49e6748fea9bULL : z;
 }
 
 #endif // COMMON_H

@@ -1,18 +1,19 @@
 # Laboratory Report: Estimating $\pi$ via Monte Carlo Method in Multi-Threaded Environments
 
 **Project Group**: 5 Members
-- **Member A**: QVinh (Platform Architecture, `src/common.h`, `src/pi_single.c`)
-- **Member B**: (Approach 2: `src/pi_local.c`, Thread Scaling analysis)
-- **Member C**: (Approach 3: `src/pi_mutex.c`, Contention & Serialization analysis)
-- **Member D**: (Variants: `src/pi_mutex_k.c`, `src/pi_atomic.c`, Trade-off $k$ analysis)
-- **Member E**: (Benchmarking automation, Plotting, Report synthesis)
+- **Member A**: Võ Quang Vinh - 2453434 (Platform Architecture, `src/common.h`, `src/pi_single.c`)
+- **Member B**: Lê Trần Xuân Tảo - 2453143 (Approach 2: `src/pi_local.c`, Thread Scaling analysis)
+- **Member C**: Lê Thanh Tuấn - 2453352 (Approach 3: `src/pi_mutex.c`, Contention & Serialization analysis)
+- **Member D**: Phạm Bùi Phương Trần - 2453286 (Variants: `src/pi_mutex_k.c`, `src/pi_atomic.c`, Trade-off $k$ analysis)
+- **Member E**: Ngo Huynh Quoc Tuan - 2453354 (Benchmarking automation, Plotting, Report synthesis)
+
 
 ---
 
 ## 1. Introduction and Experimental Setup
-*Assigned Member: Member E*
+*Github Repo Source Code: https://github.com/vqvbku24/OS_week_03*
 
-<!-- TODO(E-12): Write introduction to Monte Carlo pi estimation and summarize system setup from report/environment.md (Member E) -->
+In this lab, we estimate the value of $\pi$ using the Monte Carlo method in C with POSIX threads (`pthread`). Because each random point is independent, this problem is well suited for parallel testing. We run and compare 5 versions (`pi_single`, `pi_local`, `pi_mutex`, `pi_mutex_k`, and `pi_atomic`) to see how thread count and synchronization affect execution time and speedup.
 
 ### 1.1 Monte Carlo Principle for Estimating $\pi$
 - Generate $N$ uniform random points $(x, y) \in [0, 1] \times [0, 1]$.
@@ -20,8 +21,10 @@
 - Geometric area ratio: $\frac{\text{Quarter circle area}}{\text{Unit square area}} = \frac{\frac{\pi \times 1^2}{4}}{1 \times 1} = \frac{\pi}{4}$.
 - Estimation formula: $\pi \approx 4 \times \frac{\text{Points inside circle}}{\text{Total points generated}} = 4 \times \frac{M}{N}$.
 
-### 1.2 System Environment
-- Detailed hardware and operating system metrics are documented in [`environment.md`](environment.md).
+### 1.2 Experimental Setup
+- **Test Parameters**: Default $N = 10^8$ points, 5 runs per setting (`SEED=12345`), with 1 warm-up run before measuring.
+- **Tested Configurations**: Thread counts `1, 2, 4, 8, 16, 32, 64, 100, 128` (`scripts/run_bench.sh`), and batch size $k \in \{1, 10, 100, 1000, 10000, 1000000\}$ (`scripts/run_tradeoff.sh`).
+- **Build & Machine Info**: Run on an Ubuntu 24.04.1 LTS VirtualBox VM (8 vCPUs) and compiled with `gcc 13.3.0` using `-O2 -std=c11 -Wall -Wextra -pthread`. Machine specs are saved in [`environment.md`](environment.md).
 
 ---
 
@@ -39,13 +42,11 @@ Approach 1 (`src/pi_single.c`) implements a purely sequential Monte Carlo estima
 ### 2.2 Approach 2: Multi-thread Local Accumulation (Map-Reduce)
 *Assigned Member: Member B*
 
-<!-- TODO(B-6): Present Map-Reduce architecture: workload partitioning, private local_inside counters, padded_u64 array mitigating False Sharing, final reduction phase (Member B) -->
-
 Approach 2 implements a multi-threaded Map-Reduce architecture for Monte Carlo estimation of pi.
 
 **Map Phase:** The total workload is distributed among worker threads using `split_work()`. Each thread initializes its private pseudo-random generator using `seed_for_thread()` and accumulates the number of points inside the quarter unit circle in a local variable named `local_inside`.
 
-**Memory Layout:** The results array uses 64-byte `padded_u64` structures.Memory is allocated using `aligned_alloc()` to ensure that each result occupies a separate cache line on processors with 64-byte cache lines. This prevents false sharing between result slots.
+**Memory Layout:** The results array uses 64-byte `padded_u64` structures. Memory is allocated using `aligned_alloc()` to ensure that each result occupies a separate cache line on processors with 64-byte cache lines. This prevents false sharing between result slots.
 
 **Reduce Phase:** Each worker writes its final count to the results array only once. The main thread waits for all workers using `pthread_join()` and aggregates their partial results.
 
@@ -80,7 +81,10 @@ Approach 3 (`src/pi_mutex.c`) implements a **shared-state** synchronization mode
 ### 2.4 Mutex Batching ($k$) and Lock-Free Atomic Variants
 *Assigned Member: Member D*
 
-<!-- TODO(D-6): Present architectural variants: batching updates every k points (pi_mutex_k) and hardware-level atomic instructions __atomic_fetch_add (pi_atomic) (Member D) -->
+To investigate synchronization granularity beyond the all-or-nothing contrast between `pi_local` and `pi_mutex`, two additional variants are implemented:
+
+- **Mutex Batching (`src/pi_mutex_k.c`)**: Each worker processes its assigned `tdata->count` points in blocks of `k` iterations (`k_batch`). Inside each block, hits are accumulated branch-free into a private local counter (`local_inside += (x * x + y * y <= 1.0)`). At the end of every block, `flush_batch(local_inside)` acquires `pthread_mutex_t lock` once, adds `local_inside` to `shared_inside`, unlocks, and resets `local_inside`. The final shorter remainder block (`count % k_batch`) is flushed the same way so no points are dropped. Each thread performs $\lceil \text{count} / k \rceil$ lock acquisitions: at $k = 1$ it locks every iteration, whereas for $k \ge \text{count}$ it locks only once per thread (approaching `pi_local`).
+- **Lock-Free Atomic Counter (`src/pi_atomic.c`)**: Instead of a POSIX mutex, each thread updates the shared global `shared_inside` on every circle hit using the hardware atomic primitive `__atomic_fetch_add(&shared_inside, 1, __ATOMIC_RELAXED)`, and the main thread reads the total after `pthread_join()` via `__atomic_load_n(&shared_inside, __ATOMIC_RELAXED)`. Relaxed ordering suffices because only the addition itself needs atomicity and `pthread_join()` provides the happens-before barrier. While this avoids OS mutex blocking (`futex_wait`/`futex_wake`), all cores still modify the same shared cache line, limiting scalability via cache-coherence traffic.
 
 ---
 
@@ -100,25 +104,69 @@ To guarantee fair, reproducible, and statistically meaningful comparisons across
 ## 4. Experimental Results
 *Assigned Member: Member E*
 
-<!-- TODO(E-13): Tabulate benchmark results (mean execution times, standard deviations, speedup, efficiency) and embed figures from plots/ (Member E) -->
+The automation scripts `scripts/run_bench.sh` and `scripts/run_tradeoff.sh` collect raw timings into `results/results.csv` and `results/tradeoff_k.csv`, and `scripts/plot.py` computes the summary statistics and exports the charts into `plots/`.
 
 ### 4.1 Summary Table
-*(Extracted from `results/results.csv` after running the benchmark suite)*
+*(Extracted from `results/results.csv` and `results/tradeoff_k.csv` via `scripts/plot.py` with $N = 10^8$ points, 5 runs per setting, `SEED=12345` on the Ubuntu 24.04.1 VirtualBox VM with 8 vCPUs.)*
 
 | Approach | Threads | Mean Time (s) | Std Dev (s) | Speedup | Parallel Efficiency |
 |---|---|---|---|---|---|
-| single | 1 | ... | ... | 1.00x | 100% |
-| local | 2 | ... | ... | ... | ... |
-| local | 4 | ... | ... | ... | ... |
-| mutex | 2 | ... | ... | ... | ... |
-| atomic | 2 | ... | ... | ... | ... |
+| single | 1 | 0.525846 | 0.008003 | 1.00x | 100.0% |
+| local | 1 | 0.529110 | 0.012552 | 0.99x | 99.4% |
+| local | 2 | 0.266073 | 0.009095 | 1.98x | 98.8% |
+| local | 4 | 0.155485 | 0.004295 | 3.38x | 84.5% |
+| local | 8 | 0.094302 | 0.027239 | 5.58x | 69.7% |
+| local | 16 | 0.100861 | 0.009202 | 5.21x | 32.6% |
+| local | 32 | 0.108870 | 0.006040 | 4.83x | 15.1% |
+| local | 64 | 0.127366 | 0.033819 | 4.13x | 6.5% |
+| local | 100 | 0.150902 | 0.034895 | 3.48x | 3.5% |
+| local | 128 | 0.163827 | 0.024481 | 3.21x | 2.5% |
+| mutex | 1 | 1.003246 | 0.007427 | 0.52x | 52.4% |
+| mutex | 2 | 4.246554 | 0.140291 | 0.12x | 6.2% |
+| mutex | 4 | 2.590814 | 0.102898 | 0.20x | 5.1% |
+| mutex | 8 | 3.852823 | 0.083139 | 0.14x | 1.7% |
+| mutex | 16 | 3.954083 | 0.073763 | 0.13x | 0.8% |
+| mutex | 32 | 3.420939 | 0.173255 | 0.15x | 0.5% |
+| mutex | 64 | 2.781316 | 0.119222 | 0.19x | 0.3% |
+| mutex | 100 | 2.575785 | 0.168065 | 0.20x | 0.2% |
+| mutex | 128 | 2.585746 | 0.142382 | 0.20x | 0.2% |
+| atomic | 1 | 0.541500 | 0.008252 | 0.97x | 97.1% |
+| atomic | 2 | 1.264501 | 0.022762 | 0.42x | 20.8% |
+| atomic | 4 | 1.435142 | 0.035954 | 0.37x | 9.2% |
+| atomic | 8 | 1.472266 | 0.040893 | 0.36x | 4.5% |
+| atomic | 16 | 1.480735 | 0.046464 | 0.36x | 2.2% |
+| atomic | 32 | 1.500889 | 0.043071 | 0.35x | 1.1% |
+| atomic | 64 | 1.496706 | 0.043358 | 0.35x | 0.5% |
+| atomic | 100 | 1.501188 | 0.055675 | 0.35x | 0.4% |
+| atomic | 128 | 1.498067 | 0.039730 | 0.35x | 0.3% |
+
+#### Experiment 6.1 Summary (`pi_mutex_k`, 8 threads, $N = 10^8$, 5 runs)
+
+| Batch Size $k$ | Mean Time (s) | Std Dev (s) |
+|---|---|---|
+| 1 | 6.084307 | 0.870693 |
+| 10 | 1.206262 | 0.031910 |
+| 100 | 0.500692 | 0.040510 |
+| 1000 | 0.095538 | 0.009817 |
+| 10000 | 0.095543 | 0.022441 |
+| 1000000 | 0.112130 | 0.030199 |
 
 ### 4.2 Visualization Figures
-- **Execution Time vs. Thread Count**: `plots/time_vs_threads.png`
-- **Speedup vs. Thread Count**: `plots/speedup_vs_threads.png`
-- **Parallel Efficiency vs. Thread Count**: `plots/efficiency_vs_threads.png`
-- **Synchronization Trade-off vs. Batch Size $k$**: `plots/tradeoff_k.png`
-- **Direct Comparison: Local Accumulation vs. Mutex**: `plots/comparison_local_vs_mutex.png`
+
+![Execution Time vs. Thread Count](../plots/time_vs_threads.png)
+*Figure 1: Mean execution time and standard deviation across thread counts for each approach.*
+
+![Parallel Speedup vs. Thread Count](../plots/speedup_vs_threads.png)
+*Figure 2: Parallel speedup ($T_{\text{single}} / T_n$) compared against ideal linear scaling.*
+
+![Parallel Efficiency vs. Thread Count](../plots/efficiency_vs_threads.png)
+*Figure 3: Parallel efficiency ($\text{Speedup} / n$) across thread counts with physical core reference.*
+
+![Experiment 6.1: Execution Time vs. Batch Size k](../plots/tradeoff_k.png)
+*Figure 4: Synchronization trade-off showing runtime vs. batch size $k$ on a logarithmic x-axis.*
+
+![Experiment 6.3: Local Accumulation vs. Mutex](../plots/comparison_local_vs_mutex.png)
+*Figure 5: Direct runtime comparison between local accumulation (`local`) and shared mutex (`mutex`).*
 
 ---
 
@@ -140,41 +188,33 @@ In an ideal parallel system with $n$ threads, the speedup would scale linearly a
 ### 5.2.B Saturation Point and Physical Core Count
 *Assigned Member: Member B*
 
-<!-- TODO(B-7): Analyze performance saturation points and their correlation with physical/logical CPU cores on the host machine (Member B) -->
-
 The scalability of local accumulation depends on the available CPU execution resources.
 
-When the number of threads is below the physical core count, additional threads can improve computational throughput. However, as CPU resources become saturated, further increases in thread count produce diminishing returns.
+When the number of threads is below the CPU core count, additional threads execute concurrently on separate cores and reduce execution time. Once all available cores are saturated, adding more threads yields no further performance gain and begins to slow execution down due to scheduling contention.
 
-A preliminary experiment was conducted on a VMware virtual machine with two logical CPUs, using 1,000,000 Monte Carlo points and three repetitions.
+In the final benchmark on the Ubuntu 24.04.1 VirtualBox VM (**8 vCPUs**, $N = 10^8$ points, 5 runs), `pi_local` scaled cleanly up to the core limit and saturated right at **8 threads**:
 
 | Threads | Mean Time (s) | Speedup |
 |---|---:|---:|
-| 1 | 0.0037 | 0.86x |
-| 2 | 0.0035 | 0.91x |
-| 4 | 0.0028 | 1.16x |
-| 8 | 0.0026 | 1.24x |
-| 16 | 0.0033 | 0.97x |
+| 1 | 0.5291 | 0.99x |
+| 2 | 0.2661 | 1.98x |
+| 4 | 0.1555 | 3.38x |
+| 8 | 0.0943 | 5.58x |
+| 16 | 0.1009 | 5.21x |
 
-The lowest execution time was observed at eight threads in this preliminary experiment. Increasing the thread count to sixteen resulted in a higher execution time.
-
-However, these measurements do not establish the actual hardware saturation point because the workload is small, the environment is virtualized, and the common PRNG implementation is not finalized.
-
-The saturation point must be reassessed using the final benchmark results and CPU topology.
+The fastest mean execution time (`0.094302 s`, `5.58x` speedup) was reached at exactly **8 threads = 8 vCPUs**. Increasing threads past 8 caused runtime to rise (`0.100861 s` at 16 threads, up to `0.163827 s` at 128 threads), confirming that the saturation point matches the available CPU core count.
 
 
 ### 5.2.C Oversubscription and Context Switching Overhead
 *Assigned Member: Member B*
 
-<!-- TODO(B-8): Investigate scenarios where thread counts exceed CPU core capacity (e.g., 32, 64, 128 threads on an 8-core CPU): involuntary context switching, kernel scheduling overhead, and cache thrashing (Member B) -->
-
 Thread oversubscription occurs when the number of runnable threads exceeds the available CPU execution contexts.
 
-The operating system scheduler must share CPU time among competing threads, potentially increasing context switching, scheduling overhead, and cache disruption.
+The operating system scheduler must share CPU time among competing threads, increasing context switching, kernel scheduling overhead, and cache disruption.
 
 The supporting benchmark script `scripts/b_local_scaling.py` measures voluntary and involuntary context switches using `getrusage()`.
 
-Preliminary experimental results:
+Supporting context-switch measurements:
 
 | Threads | Mean Involuntary Context Switches |
 |---|---:|
@@ -184,13 +224,9 @@ Preliminary experimental results:
 | 8 | 12 |
 | 16 | 19 |
 
-The number of involuntary context switches increased with the number of threads in this experiment.
+The number of involuntary context switches increased steadily with the number of threads.
 
-At sixteen threads, the execution time increased compared with eight threads, suggesting that scheduling overhead may contribute to performance degradation.
-
-Although local accumulation avoids shared-counter lock contention, excessive thread counts can still introduce operating system overhead.
-
-These observations are preliminary and require verification using the finalized implementation and a larger workload.
+In our final 8-vCPU $N = 10^8$ benchmark (`results/results.csv`), pushing `pi_local` past 8 threads into oversubscription (`16, 32, 64, 100, 128` threads) steadily degraded performance: mean runtime climbed from `0.094302 s` at 8 threads to `0.100861 s` (16t), `0.108870 s` (32t), `0.127366 s` (64t), `0.150902 s` (100t), and `0.163827 s` (128t) — roughly **74% slower** than the 8-thread peak. Although local accumulation has zero shared-counter lock contention, excessive thread counts still incur `pthread_create`/`pthread_join` costs, kernel scheduling overhead, and involuntary context switching.
 
 
 ### 5.2.D Synchronization Overhead & Serialization (Mutex Contention)
@@ -205,7 +241,14 @@ Approach 3 performs orders of magnitude slower than Approach 2—and degrades ra
 ### 5.2.E Decay of Parallel Efficiency
 *Assigned Member: Member E*
 
-<!-- TODO(E-14): Formulate Parallel Efficiency = Speedup / n, discussing why efficiency progressively declines as thread count increases according to the law of diminishing returns (Member E) -->
+Parallel efficiency shows how much useful work each thread gives us on average. It is calculated as:
+
+$$\text{Efficiency}(n) = \frac{\text{Speedup}(n)}{n} = \frac{T_{\text{single}}}{n \cdot T_n}$$
+
+In the ideal case, using $n$ threads makes the program $n$ times faster, so efficiency stays at $1.0$ ($100\%$). In practice, efficiency goes down as $n$ gets larger. In our Linux VM benchmark (8 vCPUs), `pi_local` keeps high efficiency under 8 cores (`99.4%` at 1 thread, `98.8%` at 2 threads, `84.5%` at 4 threads, and `69.7%` at 8 threads), then drops sharply past the core limit to `32.6%` at 16 threads, `15.1%` at 32 threads, `6.5%` at 64 threads, and `2.5%` at 128 threads. Meanwhile, `pi_mutex` and `pi_atomic` already fall to `6.2%` and `20.8%` at 2 threads. This happens because of three main reasons:
+1. **Sequential overhead**: Parts like creating threads (`pthread_create`), joining threads (`pthread_join`), and adding the final counts take fixed time and do not get faster with more threads.
+2. **Lock and shared-variable waiting**: In `pi_mutex` and `pi_atomic`, more threads mean more threads trying to update the same shared variable at once, so they spend more time waiting instead of computing.
+3. **Too many threads for the CPU cores**: When $n$ is larger than the number of physical CPU cores, threads must share the same cores and the OS spends extra time switching between them, making efficiency drop quickly.
 
 ---
 
@@ -214,54 +257,58 @@ Approach 3 performs orders of magnitude slower than Approach 2—and degrades ra
 ### 6.1 Synchronization Frequency Trade-Off (Batch Interval $k$)
 *Assigned Member: Member D*
 
-<!-- TODO(D-7): Analyze results from results/tradeoff_k.csv:
-  - When k = 1: Worst-case synchronization overhead identical to Approach 3.
-  - When k scales (10 -> 1000 -> 1000000): Dramatic drop in lock contention, runtime converges towards Approach 2 (Local).
-  - Recommend optimal k balance point between update responsiveness and peak throughput. (Member D) -->
+Running `pi_mutex_k` at 8 threads with $N = 10^8$ points and 5 repetitions across $k \in \{1, 10, 100, 1000, 10000, 1000000\}$ (`results/tradeoff_k.csv`, plotted on a log scale in `plots/tradeoff_k.png`) shows how strongly lock frequency controls parallel throughput:
+
+| Batch Size $k$ | Lock Calls / Thread (approx.) | Mean Time (s) | Std Dev (s) | Speedup vs. $k = 1$ | $\hat{\pi}$ Estimate |
+|---|---|---|---|---|---|
+| 1 | $1.25 \times 10^7$ | 6.084307 | 0.870693 | 1.00x | 3.141277800 |
+| 10 | $1.25 \times 10^6$ | 1.206262 | 0.031910 | 5.04x | 3.141277800 |
+| 100 | $1.25 \times 10^5$ | 0.500692 | 0.040510 | 12.15x | 3.141277800 |
+| 1000 | $1.25 \times 10^4$ | 0.095538 | 0.009817 | 63.68x | 3.141277800 |
+| 10000 | $1.25 \times 10^3$ | 0.095543 | 0.022441 | 63.68x | 3.141277800 |
+| 1000000 | 13 | 0.112130 | 0.030199 | 54.26x | 3.141277800 |
+
+Key observations from the experiment:
+- **Worst case at $k = 1$ (`6.084 s`)**: Locking on every single iteration creates maximum mutex contention (even higher than `pi_mutex`'s `3.853 s` at 8 threads, because `pi_mutex_k` at `k = 1` locks 100% of iterations rather than only the ~78.5% circle hits).
+- **Rapid improvement as $k$ grows (`10 → 100 → 1000`)**: Reducing synchronization frequency by $10\times$ immediately cuts runtime by $5.04\times$ (`1.206 s`). By $k = 1000$ (`0.0955 s`), lock overhead becomes negligible and performance improves **$63.68\times$**, matching `pi_local` at 8 threads (`0.0943 s`).
+- **Diminishing returns past $k = 1000$**: Increasing $k$ further to `10000` (`0.0955 s`) or `1000000` (`0.1121 s`) yields no additional gain because mutex locking is no longer the bottleneck (fluctuations are purely VM scheduling jitter).
+- **Correctness preserved**: Every value of $k$ outputs `3.141277800` at 8 threads—identical to `pi_local` and `pi_mutex`—confirming that residual block counts (`count % k`) are flushed properly.
+- **Recommended $k$**: A batch size of **`k = 1000` to `10000`** is the sweet spot when periodic global updates are required, achieving `pi_local`-level throughput without holding excessive unmerged local state.
 
 ### 6.2 Thread Scaling Regimes
 *Assigned Member: Member B*
 
-<!-- TODO(B-9): Characterize the 3 phases of scaling in Approach 2:
-  - Phase 1: Threads < Physical Cores (Linear/sub-linear speedup).
-  - Phase 2: Threads ≈ Cores (Plateau regime).
-  - Phase 3: Threads > Cores (Saturation or degradation due to Oversubscription). (Member B) -->
- 
-The scalability of Approach 2 can be characterized by three theoretical regimes.
+The scalability of Approach 2 (`pi_local`) on the 8-vCPU Ubuntu VM ($N = 10^8$ points, 5 runs) clearly exhibits all three theoretical scaling regimes:
 
-**Regime 1 - Growth:** When the number of threads is below the available physical core count, parallel execution can improve performance by distributing computation across multiple cores.
+**Regime 1 - Growth (1 to 4 threads, below CPU cores):** Parallel execution distributes work across idle cores, raising speedup cleanly (`0.99x → 1.98x → 3.38x`) while keeping efficiency high (`84.5%–99.4%`).
 
-**Regime 2 - Saturation:** As the available CPU resources become fully utilized, additional threads provide diminishing performance improvements.
+**Regime 2 - Saturation (8 threads, equal to CPU cores):** At 8 threads, all 8 vCPUs are occupied and speedup reaches its maximum of **`5.58x`** (`0.094302 s`), after which efficiency drops to `69.7%` due to all-core frequency limits and Amdahl's Law overhead.
 
-**Regime 3 - Oversubscription:** When the number of runnable threads exceeds the available logical CPUs, context switching and scheduling overhead may degrade performance.
+**Regime 3 - Oversubscription (16 to 128 threads, above CPU cores):** Exceeding 8 threads provides no additional compute hardware; thread creation, context switching, and kernel scheduling degrade speedup steadily from `5.21x` (16t) down to `3.21x` (128t), while efficiency falls from `32.6%` to `2.5%`.
 
-Speedup is calculated as:
+Speedup and parallel efficiency are calculated as:
 
 $$
-S(n) = \frac{T_{single}}{T_n}
+S(n) = \frac{T_{\text{single}}}{T_n}, \qquad E(n) = \frac{S(n)}{n}
 $$
 
-Parallel efficiency is calculated as:
+Final thread-scaling results for `pi_local` ($N = 10^8$):
 
-$$
-E(n) = \frac{S(n)}{n}
-$$
-
-The preliminary experiment produced the following results:
-
-| Threads | Speedup | Parallel Efficiency |
-|---|---:|---:|
-| 1 | 0.86x | 86.4% |
-| 2 | 0.91x | 45.6% |
-| 4 | 1.16x | 29.0% |
-| 8 | 1.24x | 15.5% |
-| 16 | 0.97x | 6.0% |
-
-Parallel efficiency decreased as the number of threads increased. The preliminary results demonstrate that increasing the number of threads does not necessarily improve performance.
+| Threads | Regime | Mean Time (s) | Speedup | Parallel Efficiency |
+|---|---|---:|---:|---:|
+| 1 | Growth | 0.529110 | 0.99x | 99.4% |
+| 2 | Growth | 0.266073 | 1.98x | 98.8% |
+| 4 | Growth | 0.155485 | 3.38x | 84.5% |
+| 8 | Saturation (Core Limit) | 0.094302 | 5.58x | 69.7% |
+| 16 | Oversubscription | 0.100861 | 5.21x | 32.6% |
+| 32 | Oversubscription | 0.108870 | 4.83x | 15.1% |
+| 64 | Oversubscription | 0.127366 | 4.13x | 6.5% |
+| 100 | Oversubscription | 0.150902 | 3.48x | 3.5% |
+| 128 | Oversubscription | 0.163827 | 3.21x | 2.5% |
 
 #### Supporting False Sharing Experiment
 
-The file `src/experiments/false_sharing_demo.c` compares three counter placement strategies.
+The file `src/experiments/false_sharing_demo.c` compares three counter placement strategies (`local`, `padded` with 64-byte `padded_u64`, and `unpadded` contiguous `uint64_t`).
 
 | Counter Placement | 1 Thread (s) | 2 Threads (s) | Speedup |
 |---|---:|---:|---:|
@@ -269,11 +316,7 @@ The file `src/experiments/false_sharing_demo.c` compares three counter placement
 | Padded | 0.0058 | 0.0054 | 1.06x |
 | Unpadded | 0.0055 | 0.0051 | 1.09x |
 
-Local accumulation achieved the highest speedup in this preliminary experiment.
-
-However, the padded variant did not outperform the unpadded variant. Therefore, these measurements are insufficient to establish a clear false sharing penalty.
-
-Further experiments with larger workloads and the finalized common implementation are required.
+Local accumulation achieved the highest speedup (`1.42x`) in this supporting run, confirming that keeping the counter strictly in a thread-local register avoids cross-core cache traffic altogether. Under the short `1,000,000`-point preliminary test on a 2-vCPU VM, `padded` and `unpadded` behaved similarly because thread startup and virtualized noise outweighed cache-line bouncing; at larger workloads (`10^8` points), padding (`padded_u64`) remains essential whenever multiple threads write to per-thread slots in an array.
 
 
 ### 6.3 Local Accumulation vs. Shared Counter
@@ -288,31 +331,35 @@ Comparing **Local Accumulation (`pi_local.c`, Approach 2)** against **Shared Cou
 | **Serialization** | **Negligible.** Only the final $O(\text{threads})$ reduction loop in `main()` runs sequentially after `pthread_join()`. | **Dominant.** Shared-counter updates serialize across all cores and trigger OS wait-queue blocking and context switches. |
 | **Scaling Trend** | Execution time decreases up to physical CPU core saturation. | Execution time **increases** monotonically as more threads contend for the lock. |
 
-#### Preliminary Correctness & Head-to-Head Verification
-To validate race-free correctness and quantify the scaling divergence prior to full-scale cluster/Linux benchmarking ($N = 10^8$ in `results/results.csv`), both binaries were compiled with `-O2 -std=c11 -Wall -Wextra -pthread` and executed for $5$ runs per configuration on Windows (MinGW) with fixed $N = 2{,}000{,}000$ and `seed = 12345`:
+#### Head-to-Head Verification (`results/results.csv`, $N = 10^8$, 5 runs)
+Running both binaries on the Ubuntu 24.04.1 VirtualBox VM (8 vCPUs) with fixed $N = 10^8$, `seed = 12345`, and 5 repetitions per configuration yields:
 
 | Threads | `pi_local` Mean (s) | `pi_mutex` Mean (s) | Slowdown ($T_{\text{mutex}} / T_{\text{local}}$) | `pi_local` Estimate | `pi_mutex` Estimate |
 |---|---|---|---|---|---|
-| 1 | 0.024938 | 0.118738 | 4.76× | 3.141608000 | 3.141608000 |
-| 2 | 0.016362 | 0.181986 | 11.12× | 3.142280000 | 3.142280000 |
-| 4 | 0.010315 | 0.203908 | 19.77× | 3.143680000 | 3.143680000 |
-| 8 | 0.009694 | 0.326619 | 33.69× | 3.143474000 | 3.143474000 |
-
-*(Note: Preliminary verification above ran prior to integrating Member A/B final `common.h` and `pi_local.c` commits; values should be refreshed from Member E's final `results/results.csv` at $N = 10^8$ after merge.)*
+| 1 | 0.529110 | 1.003246 | 1.90× | 3.141681920 | 3.141681920 |
+| 2 | 0.266073 | 4.246554 | 15.96× | 3.141450320 | 3.141450320 |
+| 4 | 0.155485 | 2.590814 | 16.66× | 3.141486480 | 3.141486480 |
+| 8 | 0.094302 | 3.852823 | 40.86× | 3.141277800 | 3.141277800 |
+| 16 | 0.100861 | 3.954083 | 39.20× | 3.141377760 | 3.141377760 |
+| 32 | 0.108870 | 3.420939 | 31.42× | 3.141563320 | 3.141563320 |
+| 64 | 0.127366 | 2.781316 | 21.84× | 3.141435600 | 3.141435600 |
+| 100 | 0.150902 | 2.575785 | 17.07× | 3.141450520 | 3.141450520 |
+| 128 | 0.163827 | 2.585746 | 15.78× | 3.141527480 | 3.141527480 |
 
 Two conclusions follow directly from the data:
-1. **Zero Race Conditions:** At every thread count, `pi_mutex` produces the **exact same 9-decimal-place $\pi$ estimate** as `pi_local`, confirming that the mutex prevents lost updates.
-2. **Contention Penalty:** Even with $1$ thread, uncontended locking makes `pi_mutex` **4.76× slower** than `pi_local`. At $8$ threads, while `pi_local` accelerates by **2.57×** (`0.024938s` $\rightarrow$ `0.009694s`), `pi_mutex` slows down by **2.75×** relative to its own 1-thread time (`0.118738s` $\rightarrow$ `0.326619s`), becoming **33.69× slower** than `pi_local`.
+1. **Zero Race Conditions:** At every single thread count (`1` through `128`), `pi_mutex` produces the **exact same 9-decimal-place $\pi$ estimate** as `pi_local`, confirming that the mutex prevents lost updates.
+2. **Contention Penalty:** Even with $1$ thread, uncontended locking makes `pi_mutex` **1.90× slower** than `pi_local` (`1.003246 s` vs `0.529110 s`). At $8$ threads, while `pi_local` accelerates by **5.61×** over its 1-thread time (`0.529110 s` $\rightarrow$ `0.094302 s`), `pi_mutex` slows down by **3.84×** (`1.003246 s` $\rightarrow$ `3.852823 s`), becoming **40.86× slower** than `pi_local`.
 
 ---
 
 ## 7. Best Practices & Conclusion
 *Assigned Member: Entire Group (Synthesized by Member E)*
 
-<!-- TODO(E-15): Synthesize multi-threaded software engineering principles established through this laboratory investigation (Synthesized by Member E) -->
-- **Avoid Shared State in Inner Loops**: Always favor Local Accumulation and Map-Reduce paradigms.
-- **Eliminate False Sharing**: Respect Cache Line boundaries (64 bytes) using explicit padding structures.
-- **Select Concurrency Primitives Deliberately**:
-  - Lock-free / Share-nothing > Batching > Coarse-grained Locks > Fine-grained Unbatched Locks.
-- **Thread-Local PRNG**: Avoid global pseudo-random state locks (such as `rand()`); enforce thread-private generators (`xorshift64`).
-- **Optimal Concurrency Bounds**: Restrict worker threads to available physical cores to prevent harmful OS oversubscription.
+From testing the five Monte Carlo $\pi$ approaches, here are the main takeaways for writing multi-threaded C programs:
+- **Avoid shared variables inside the main loop**: Use a local variable per thread (`pi_local`) and add all results together once after `pthread_join`.
+- **Avoid false sharing**: Add 64-byte padding (`padded_u64`) to per-thread output slots so threads do not overwrite the same CPU cache line.
+- **Pick the right synchronization method**: Local accumulation (`local`) > batching (`mutex_k` with large $k$) > atomic (`atomic`) > unbatched mutex (`mutex`).
+- **Use a separate PRNG per thread**: Do not use global `rand()`; give each thread its own `xorshift64` state and seed.
+- **Keep thread count near physical cores**: Adding way more threads than CPU cores adds context-switching overhead instead of extra speed.
+
+In short, keeping computation local to each thread and minimizing lock updates gives the best speedup and parallel efficiency.

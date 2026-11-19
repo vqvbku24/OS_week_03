@@ -104,21 +104,21 @@ General Convention: `TODO(X-n)` corresponds to unique task identifiers located a
 **Assigned Files**: `scripts/run_bench.sh`, `scripts/run_tradeoff.sh`, `scripts/plot.py`, `report/environment.md`, `report/report.md`.
 
 **Checklist**
-- [ ] TODO(E-1) `scripts/run_bench.sh`: Automate runs across approach $\times$ threads $\times 5$ repetitions, writing standard CSV rows.
-- [ ] TODO(E-2) `scripts/run_bench.sh`: Collect hardware topology (`lscpu`, `uname -a`) into `report/environment.md`.
-- [ ] TODO(E-3) `scripts/run_bench.sh`: Support parameterization ($N$, thread lists, run counts) via environment variables.
-- [ ] TODO(E-4) `scripts/run_bench.sh`: Execute unrecorded warm-up run to eliminate cold-start cache anomalies.
-- [ ] TODO(E-5) `scripts/run_tradeoff.sh`: Automate Experiment 6.1 over $k$ values, saving output to `results/tradeoff_k.csv`.
-- [ ] TODO(E-6) `scripts/run_tradeoff.sh`: Reuse benchmark records for Experiment 6.3 without redundant execution.
-- [ ] TODO(E-7) `scripts/plot.py`: Parse CSV data, compute mean execution times and standard deviations.
-- [ ] TODO(E-8) `scripts/plot.py`: Calculate Speedup ($T_{\text{single}} / T_n$) and Parallel Efficiency ($\text{Speedup} / n$).
-- [ ] TODO(E-9) `scripts/plot.py`: Generate and save 3 core plots (time, speedup, efficiency) and overall comparison to `plots/`.
-- [ ] TODO(E-10) `scripts/plot.py`: Generate Experiment 6.1 plot (time vs. $k$ on log scale).
-- [ ] TODO(E-11) `scripts/plot.py`: Draw vertical reference line indicating physical CPU core count on all graphs.
-- [ ] TODO(E-12) `report/report.md`: Write Section 1 — Introduction and Experimental Setup.
-- [ ] TODO(E-13) `report/report.md`: Present Section 4 — Result Tables and Figure Embeddings from `plots/`.
-- [ ] TODO(E-14) `report/report.md`: Write Section 5.2.E — Parallel Efficiency Degradation Analysis.
-- [ ] TODO(E-15) `report/report.md`: Write Section 7 — Final Conclusion and Synthesis of Group Best Practices.
+- [x] TODO(E-1) `scripts/run_bench.sh`: Automate runs across approach $\times$ threads $\times 5$ repetitions, writing standard CSV rows.
+- [x] TODO(E-2) `scripts/run_bench.sh`: Collect hardware topology (`lscpu`, `uname -a`) into `report/environment.md`.
+- [x] TODO(E-3) `scripts/run_bench.sh`: Support parameterization ($N$, thread lists, run counts) via environment variables.
+- [x] TODO(E-4) `scripts/run_bench.sh`: Execute unrecorded warm-up run to eliminate cold-start cache anomalies.
+- [x] TODO(E-5) `scripts/run_tradeoff.sh`: Automate Experiment 6.1 over $k$ values, saving output to `results/tradeoff_k.csv`.
+- [x] TODO(E-6) `scripts/run_tradeoff.sh`: Reuse benchmark records for Experiment 6.3 without redundant execution.
+- [x] TODO(E-7) `scripts/plot.py`: Parse CSV data, compute mean execution times and standard deviations.
+- [x] TODO(E-8) `scripts/plot.py`: Calculate Speedup ($T_{\text{single}} / T_n$) and Parallel Efficiency ($\text{Speedup} / n$).
+- [x] TODO(E-9) `scripts/plot.py`: Generate and save 3 core plots (time, speedup, efficiency) and overall comparison to `plots/`.
+- [x] TODO(E-10) `scripts/plot.py`: Generate Experiment 6.1 plot (time vs. $k$ on log scale).
+- [x] TODO(E-11) `scripts/plot.py`: Draw vertical reference line indicating physical CPU core count on all graphs.
+- [x] TODO(E-12) `report/report.md`: Write Section 1 — Introduction and Experimental Setup.
+- [x] TODO(E-13) `report/report.md`: Present Section 4 — Result Tables and Figure Embeddings from `plots/`.
+- [x] TODO(E-14) `report/report.md`: Write Section 5.2.E — Parallel Efficiency Degradation Analysis.
+- [x] TODO(E-15) `report/report.md`: Write Section 7 — Final Conclusion and Synthesis of Group Best Practices.
 
 **Dependencies**: Requires functional binaries from A, B, C, D for formal data collection.
 **Definition of Done (DoD)**:
@@ -158,8 +158,8 @@ General Convention: `TODO(X-n)` corresponds to unique task identifiers located a
 
 ## Final Submission Checklist
 
-- [ ] All 5 C programs compile cleanly without warnings (`make` succeeds with 0 warnings).
-- [ ] Raw data files produced and committed: `results/results.csv` and `results/tradeoff_k.csv`.
-- [ ] All visualization charts generated and committed in `plots/` (`time`, `speedup`, `efficiency`, `tradeoff_k`, `comparison`).
+- [x] All 5 C programs compile cleanly without warnings (`make` succeeds with 0 warnings).
+- [x] Raw data files produced and committed: `results/results.csv` and `results/tradeoff_k.csv`.
+- [x] All visualization charts generated and committed in `plots/` (`time`, `speedup`, `efficiency`, `tradeoff_k`, `comparison`).
 - [ ] Comprehensive laboratory report `report/report.md` with all 7 sections fully written and formatted (with all member names & IDs).
-- [ ] System environment file `report/environment.md` correctly documenting experimental testbed.
+- [x] System environment file `report/environment.md` correctly documenting experimental testbed.

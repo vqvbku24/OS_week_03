@@ -30,7 +30,11 @@
 ### 2.1 Approach 1: Single Thread (Baseline)
 *Assigned Member: QVinh (Member A)*
 
-<!-- TODO(A-8): Present Single-Thread design: random number generation loop, xorshift64 PRNG, lack of multi-threading overhead, role as experimental baseline (QVinh - Member A) -->
+Approach 1 (`src/pi_single.c`) implements a purely sequential Monte Carlo estimator running on a single CPU core without any threading or synchronization primitives. Its primary architectural characteristics are:
+
+- **PRNG Design (`xorshift64` + `rand01`)**: Instead of the C standard library `rand()` (which relies on a shared global state and often acquires internal mutex locks in multi-threaded runtimes), the baseline uses a local 64-bit `xorshift64` generator with shift parameters `(13, 7, 17)`. The initial state is derived via `seed_for_thread(base_seed, 0)` using SplitMix64 bit-mixing to guarantee a well-distributed, non-zero seed. Each 64-bit integer is converted into a uniformly distributed IEEE-754 `double` in $[0, 1)$ by extracting its upper 53 bits (`(xorshift64(&state) >> 11) * 2^-53`).
+- **Computation Loop**: The program executes a tight `for` loop of $N$ iterations. In each iteration, it generates two coordinates $(x, y) \in [0, 1)^2$ and increments a stack-allocated counter `inside` whenever $x^2 + y^2 \le 1.0$. Because both `state` and `inside` live in CPU registers, the loop incurs zero memory contention, zero system-call overhead, and zero thread management cost.
+- **Role as Experimental Baseline**: After completing $N$ iterations, the estimator outputs $\hat{\pi} = 4 \cdot \frac{\text{inside}}{N}$. Its measured wall-clock runtime $T_{\text{single}}$ establishes the ground-truth sequential baseline required to compute **Speedup** ($S(n) = T_{\text{single}} / T_{\text{parallel}}(n)$) and **Parallel Efficiency** ($E(n) = S(n) / n$) across all multi-threaded approaches.
 
 ### 2.2 Approach 2: Multi-thread Local Accumulation (Map-Reduce)
 *Assigned Member: Member B*
@@ -64,11 +68,13 @@ Approach 3 (`src/pi_mutex.c`) implements a **shared-state** synchronization mode
 ## 3. Measurement Methodology & Experimental Rigor
 *Assigned Member: QVinh (Member A)*
 
-<!-- TODO(A-9): Describe measurement methodology:
-  - Employ clock_gettime(CLOCK_MONOTONIC) measuring strictly the computation loop (excluding parsing, allocations, and I/O).
-  - Seed independence guarantees per thread via arithmetic mixing.
-  - Repetition policy (>= 5 runs) to eliminate noise and calculate standard deviations.
-  - Strict avoidance of global rand()/srand() state locks. (QVinh - Member A) -->
+To guarantee fair, reproducible, and statistically meaningful comparisons across all five implementations, we enforce the following measurement contract (defined in `src/common.h` and the benchmark scripts):
+
+1. **High-Resolution Monotonic Timing**: Execution time is measured exclusively using `clock_gettime(CLOCK_MONOTONIC)` via `now_sec()`. Unlike wall-clock timers (`gettimeofday` or `CLOCK_REALTIME`), `CLOCK_MONOTONIC` is immune to NTP adjustments or system clock jumps and provides nanosecond resolution.
+2. **Strict Timing Boundaries**: The timer starts immediately before entering the computation loop (or spawning worker threads in multi-threaded approaches) and stops immediately after all threads have joined and the final reduction into $\hat{\pi}$ is complete. Argument parsing, heap allocations (`malloc`/`free`), mutex initialization/destruction, and stdout CSV formatting are strictly excluded from the timed region.
+3. **Fixed Workload & Deterministic Independent Seeds**: The total sample size $N$ is held constant (default $N = 10^8$) across all thread counts. Work is partitioned evenly using `split_work(N, nthreads, i)`, with the last thread absorbing the remainder $N \bmod \text{nthreads}$ so that the exact same number of points is evaluated in every configuration. Each thread $i$ receives an independent, decorrelated non-zero PRNG seed generated from `base_seed + i` via SplitMix64 mixing (`seed_for_thread`). Global `rand()`/`srand()` calls are completely prohibited to avoid hidden serialization locks and poor statistical quality.
+4. **Statistical Repetition & Warm-Up**: Each `(approach, threads)` configuration is preceded by an unrecorded warm-up run to stabilize CPU frequency scaling and instruction caches, followed by at least **5 independent repetitions** (`RUNS=5`). We report both the arithmetic mean and standard deviation to capture OS scheduling jitter.
+5. **Unified CSV Output Contract**: Every binary prints exactly one machine-readable CSV line (`approach,threads,run,time_sec,pi_estimate`) to `stdout`, eliminating I/O overhead inside hot loops and enabling automated ingestion by `scripts/plot.py`.
 
 ---
 
@@ -102,7 +108,15 @@ Approach 3 (`src/pi_mutex.c`) implements a **shared-state** synchronization mode
 ### 5.2.A Why is Parallel Speedup Non-Linear?
 *Assigned Member: QVinh (Member A)*
 
-<!-- TODO(A-10): Analyze Amdahl's Law, thread creation/teardown costs, memory bandwidth saturation, and diminishing returns as thread count scales (QVinh - Member A) -->
+In an ideal parallel system with $n$ threads, the speedup would scale linearly as $S(n) = n$. Even in the embarrassingly parallel **Approach 2 (`pi_local`)**, however, empirical speedup falls below the ideal linear curve due to several fundamental software and hardware factors:
+
+1. **Amdahl's Law (Sequential Fraction)**: Any portion of the timed region that cannot be parallelized limits maximum achievable speedup according to:
+   $$S(n) = \frac{1}{(1 - p) + \frac{p}{n}}$$
+   where $p$ is the parallelizable fraction and $(1 - p)$ is the sequential fraction (iterating to spawn threads via `pthread_create`, awaiting completion via `pthread_join`, and executing the final reduction loop). As $n$ grows, the parallel compute time $p/n$ shrinks while the sequential overhead $(1 - p)$ remains—or even grows with $n$—causing the speedup curve to flatten.
+2. **Thread Creation and Teardown Overhead**: Spawning OS-level POSIX threads (`pthread_create`) involves kernel system calls, stack allocation, and scheduler registration, while `pthread_join` requires synchronization barriers. Although negligible for small $n$ at $N = 10^8$, this overhead increases linearly with $n$ and becomes increasingly noticeable at high thread counts ($n = 64, 100, 128$).
+3. **CPU Frequency Scaling (Turbo Boost vs. All-Core Clock)**: Modern processors dynamically boost clock frequency when only a single core is active (favoring $T_{\text{single}}$). When multiple cores are loaded simultaneously, power and thermal limits (TDP) force the CPU to step down to a lower all-core clock frequency, which systematically compresses observed speedup below the nominal core count.
+4. **SMT / Hyper-Threading Sharing**: On CPUs with Simultaneous Multithreading (SMT), logical threads sharing the same physical core compete for shared execution units (ALU/FPU pipelines, L1/L2 caches, and issue ports). Consequently, scaling from physical cores to logical threads yields significantly less than a $2\times$ gain.
+5. **Memory Subsystem & OS Scheduling Noise**: Shared hardware resources (L3 cache, memory controllers) and background OS tasks introduce minor stalls, thread migrations, and straggler effects—because the overall execution time is dictated by the slowest thread to finish, even slight scheduling jitter produces diminishing returns as $n$ increases.
 
 ### 5.2.B Saturation Point and Physical Core Count
 *Assigned Member: Member B*

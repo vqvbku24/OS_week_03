@@ -41,6 +41,25 @@ Approach 1 (`src/pi_single.c`) implements a purely sequential Monte Carlo estima
 
 <!-- TODO(B-6): Present Map-Reduce architecture: workload partitioning, private local_inside counters, padded_u64 array mitigating False Sharing, final reduction phase (Member B) -->
 
+Approach 2 implements a multi-threaded Map-Reduce architecture for Monte Carlo estimation of pi.
+
+**Map Phase:** The total workload is distributed among worker threads using `split_work()`. Each thread initializes its private pseudo-random generator using `seed_for_thread()` and accumulates the number of points inside the quarter unit circle in a local variable named `local_inside`.
+
+**Memory Layout:** The results array uses 64-byte `padded_u64` structures.Memory is allocated using `aligned_alloc()` to ensure that each result occupies a separate cache line on processors with 64-byte cache lines. This prevents false sharing between result slots.
+
+**Reduce Phase:** Each worker writes its final count to the results array only once. The main thread waits for all workers using `pthread_join()` and aggregates their partial results.
+
+The estimated value of pi is calculated as:
+
+$$
+\hat{\pi} = 4 \times \frac{\sum_{i=0}^{n-1} inside_i}{N}
+$$
+
+This approach eliminates the need for mutex locks on the counters inside the computation loop.
+
+The implementation also handles memory allocation failures, thread creation failures, thread joining failures, and zero-point inputs.
+
+
 ### 2.3 Approach 3: Shared Counter with Mutex Lock
 *Assigned Member: Member C*
 
@@ -123,10 +142,56 @@ In an ideal parallel system with $n$ threads, the speedup would scale linearly a
 
 <!-- TODO(B-7): Analyze performance saturation points and their correlation with physical/logical CPU cores on the host machine (Member B) -->
 
+The scalability of local accumulation depends on the available CPU execution resources.
+
+When the number of threads is below the physical core count, additional threads can improve computational throughput. However, as CPU resources become saturated, further increases in thread count produce diminishing returns.
+
+A preliminary experiment was conducted on a VMware virtual machine with two logical CPUs, using 1,000,000 Monte Carlo points and three repetitions.
+
+| Threads | Mean Time (s) | Speedup |
+|---|---:|---:|
+| 1 | 0.0037 | 0.86x |
+| 2 | 0.0035 | 0.91x |
+| 4 | 0.0028 | 1.16x |
+| 8 | 0.0026 | 1.24x |
+| 16 | 0.0033 | 0.97x |
+
+The lowest execution time was observed at eight threads in this preliminary experiment. Increasing the thread count to sixteen resulted in a higher execution time.
+
+However, these measurements do not establish the actual hardware saturation point because the workload is small, the environment is virtualized, and the common PRNG implementation is not finalized.
+
+The saturation point must be reassessed using the final benchmark results and CPU topology.
+
+
 ### 5.2.C Oversubscription and Context Switching Overhead
 *Assigned Member: Member B*
 
 <!-- TODO(B-8): Investigate scenarios where thread counts exceed CPU core capacity (e.g., 32, 64, 128 threads on an 8-core CPU): involuntary context switching, kernel scheduling overhead, and cache thrashing (Member B) -->
+
+Thread oversubscription occurs when the number of runnable threads exceeds the available CPU execution contexts.
+
+The operating system scheduler must share CPU time among competing threads, potentially increasing context switching, scheduling overhead, and cache disruption.
+
+The supporting benchmark script `scripts/b_local_scaling.py` measures voluntary and involuntary context switches using `getrusage()`.
+
+Preliminary experimental results:
+
+| Threads | Mean Involuntary Context Switches |
+|---|---:|
+| 1 | 3 |
+| 2 | 6 |
+| 4 | 7 |
+| 8 | 12 |
+| 16 | 19 |
+
+The number of involuntary context switches increased with the number of threads in this experiment.
+
+At sixteen threads, the execution time increased compared with eight threads, suggesting that scheduling overhead may contribute to performance degradation.
+
+Although local accumulation avoids shared-counter lock contention, excessive thread counts can still introduce operating system overhead.
+
+These observations are preliminary and require verification using the finalized implementation and a larger workload.
+
 
 ### 5.2.D Synchronization Overhead & Serialization (Mutex Contention)
 *Assigned Member: Member C*
@@ -161,6 +226,55 @@ Approach 3 performs orders of magnitude slower than Approach 2—and degrades ra
   - Phase 1: Threads < Physical Cores (Linear/sub-linear speedup).
   - Phase 2: Threads ≈ Cores (Plateau regime).
   - Phase 3: Threads > Cores (Saturation or degradation due to Oversubscription). (Member B) -->
+ 
+The scalability of Approach 2 can be characterized by three theoretical regimes.
+
+**Regime 1 - Growth:** When the number of threads is below the available physical core count, parallel execution can improve performance by distributing computation across multiple cores.
+
+**Regime 2 - Saturation:** As the available CPU resources become fully utilized, additional threads provide diminishing performance improvements.
+
+**Regime 3 - Oversubscription:** When the number of runnable threads exceeds the available logical CPUs, context switching and scheduling overhead may degrade performance.
+
+Speedup is calculated as:
+
+$$
+S(n) = \frac{T_{single}}{T_n}
+$$
+
+Parallel efficiency is calculated as:
+
+$$
+E(n) = \frac{S(n)}{n}
+$$
+
+The preliminary experiment produced the following results:
+
+| Threads | Speedup | Parallel Efficiency |
+|---|---:|---:|
+| 1 | 0.86x | 86.4% |
+| 2 | 0.91x | 45.6% |
+| 4 | 1.16x | 29.0% |
+| 8 | 1.24x | 15.5% |
+| 16 | 0.97x | 6.0% |
+
+Parallel efficiency decreased as the number of threads increased. The preliminary results demonstrate that increasing the number of threads does not necessarily improve performance.
+
+#### Supporting False Sharing Experiment
+
+The file `src/experiments/false_sharing_demo.c` compares three counter placement strategies.
+
+| Counter Placement | 1 Thread (s) | 2 Threads (s) | Speedup |
+|---|---:|---:|---:|
+| Local | 0.0058 | 0.0040 | 1.42x |
+| Padded | 0.0058 | 0.0054 | 1.06x |
+| Unpadded | 0.0055 | 0.0051 | 1.09x |
+
+Local accumulation achieved the highest speedup in this preliminary experiment.
+
+However, the padded variant did not outperform the unpadded variant. Therefore, these measurements are insufficient to establish a clear false sharing penalty.
+
+Further experiments with larger workloads and the finalized common implementation are required.
+
 
 ### 6.3 Local Accumulation vs. Shared Counter
 *Assigned Member: Member C*

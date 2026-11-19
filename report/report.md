@@ -105,18 +105,49 @@ To guarantee fair, reproducible, and statistically meaningful comparisons across
 The automation scripts `scripts/run_bench.sh` and `scripts/run_tradeoff.sh` collect raw timings into `results/results.csv` and `results/tradeoff_k.csv`, and `scripts/plot.py` computes the summary statistics and exports the charts into `plots/`.
 
 ### 4.1 Summary Table
-*(Extracted from `results/results.csv` via `scripts/plot.py`; replace placeholder cells with the final formal $N = 10^8$ benchmark numbers once all implementations in `src/` are finalized.)*
+*(Extracted from `results/results.csv` and `results/tradeoff_k.csv` via `scripts/plot.py` with $N = 10^8$ points, 5 runs per setting, `SEED=12345` on the Ubuntu 24.04 VirtualBox VM with 6 vCPUs.)*
 
 | Approach | Threads | Mean Time (s) | Std Dev (s) | Speedup | Parallel Efficiency |
 |---|---|---|---|---|---|
-| single | 1 | ... | ... | 1.00x | 100.0% |
-| local | 2 | ... | ... | ... | ... |
-| local | 4 | ... | ... | ... | ... |
-| local | 8 | ... | ... | ... | ... |
-| mutex | 2 | ... | ... | ... | ... |
-| mutex | 4 | ... | ... | ... | ... |
-| atomic | 2 | ... | ... | ... | ... |
-| atomic | 4 | ... | ... | ... | ... |
+| single | 1 | 0.561150 | 0.048653 | 1.00x | 100.0% |
+| local | 1 | 0.639476 | 0.092224 | 0.88x | 87.8% |
+| local | 2 | 0.355139 | 0.006805 | 1.58x | 79.0% |
+| local | 4 | 0.178096 | 0.005986 | 3.15x | 78.8% |
+| local | 8 | 0.166782 | 0.015857 | 3.36x | 42.1% |
+| local | 16 | 0.143932 | 0.013205 | 3.90x | 24.4% |
+| local | 32 | 0.173229 | 0.062079 | 3.24x | 10.1% |
+| local | 64 | 0.199981 | 0.038714 | 2.81x | 4.4% |
+| local | 100 | 0.192356 | 0.019020 | 2.92x | 2.9% |
+| local | 128 | 0.202274 | 0.083739 | 2.77x | 2.2% |
+| mutex | 1 | 1.031023 | 0.020181 | 0.54x | 54.4% |
+| mutex | 2 | 4.071035 | 0.170900 | 0.14x | 6.9% |
+| mutex | 4 | 2.776243 | 0.075406 | 0.20x | 5.1% |
+| mutex | 8 | 3.512384 | 0.073224 | 0.16x | 2.0% |
+| mutex | 16 | 3.528905 | 0.140849 | 0.16x | 1.0% |
+| mutex | 32 | 2.931367 | 0.076144 | 0.19x | 0.6% |
+| mutex | 64 | 2.312106 | 0.063966 | 0.24x | 0.4% |
+| mutex | 100 | 2.609902 | 0.790713 | 0.22x | 0.2% |
+| mutex | 128 | 3.699664 | 0.253968 | 0.15x | 0.1% |
+| atomic | 1 | 0.636585 | 0.090563 | 0.88x | 88.1% |
+| atomic | 2 | 1.255568 | 0.035313 | 0.45x | 22.3% |
+| atomic | 4 | 1.427620 | 0.049038 | 0.39x | 9.8% |
+| atomic | 8 | 1.469940 | 0.026612 | 0.38x | 4.8% |
+| atomic | 16 | 1.499561 | 0.037552 | 0.37x | 2.3% |
+| atomic | 32 | 1.456538 | 0.025029 | 0.39x | 1.2% |
+| atomic | 64 | 1.522099 | 0.026803 | 0.37x | 0.6% |
+| atomic | 100 | 1.527475 | 0.043508 | 0.37x | 0.4% |
+| atomic | 128 | 1.460614 | 0.121318 | 0.38x | 0.3% |
+
+#### Experiment 6.1 Summary (`pi_mutex_k`, 6 threads, $N = 10^8$, 5 runs)
+
+| Batch Size $k$ | Mean Time (s) | Std Dev (s) |
+|---|---|---|
+| 1 | 4.483470 | 0.051389 |
+| 10 | 0.948842 | 0.046814 |
+| 100 | 0.201008 | 0.011588 |
+| 1000 | 0.072585 | 0.019524 |
+| 10000 | 0.067844 | 0.003708 |
+| 1000000 | 0.062284 | 0.001461 |
 
 ### 4.2 Visualization Figures
 
@@ -224,7 +255,7 @@ Parallel efficiency shows how much useful work each thread gives us on average. 
 
 $$\text{Efficiency}(n) = \frac{\text{Speedup}(n)}{n} = \frac{T_{\text{single}}}{n \cdot T_n}$$
 
-In the ideal case, using $n$ threads makes the program $n$ times faster, so efficiency stays at $1.0$ ($100\%$). In practice, efficiency goes down as $n$ gets larger because of three main reasons:
+In the ideal case, using $n$ threads makes the program $n$ times faster, so efficiency stays at $1.0$ ($100\%$). In practice, efficiency goes down as $n$ gets larger. In our Linux VM benchmark (6 vCPUs), `pi_local` starts at $79.0\%$ efficiency with 2 threads and $78.8\%$ with 4 threads, then drops to $42.1\%$ at 8 threads, $24.4\%$ at 16 threads, and $2.2\%$ at 128 threads, while `pi_mutex` and `pi_atomic` already fall to $6.9\%$ and $22.3\%$ at 2 threads. This happens because of three main reasons:
 1. **Sequential overhead**: Parts like creating threads (`pthread_create`), joining threads (`pthread_join`), and adding the final counts take fixed time and do not get faster with more threads.
 2. **Lock and shared-variable waiting**: In `pi_mutex` and `pi_atomic`, more threads mean more threads trying to update the same shared variable at once, so they spend more time waiting instead of computing.
 3. **Too many threads for the CPU cores**: When $n$ is larger than the number of physical CPU cores, threads must share the same cores and the OS spends extra time switching between them, making efficiency drop quickly.

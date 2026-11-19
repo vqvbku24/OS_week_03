@@ -4,8 +4,8 @@ This document records the hardware specifications, operating system, and compile
 
 ## 1. Hardware Specifications & CPU Topology
 - **CPU Model**: Intel(R) Core(TM) Ultra 5 225U (Oracle VirtualBox VM, KVM)
-- **Physical Cores / Logical Cores (SMT)**: 6 vCPUs (1 socket, 6 cores per socket, 1 thread per core)
-- **L1 / L2 / L3 Cache Hierarchy**: L1d 192 KiB (6 instances), L1i 384 KiB (6 instances), L2 12 MiB (6 instances), L3 72 MiB (6 instances)
+- **Physical Cores / Logical Cores (SMT)**: 8 vCPUs (allocated for the final benchmark run; confirmed by `nproc = 8` in `results/tradeoff_k.csv` and `os.cpu_count() = 8`)
+- **L1 / L2 / L3 Cache Hierarchy**: Per-vCPU caches reported by `lscpu`: L1d 32 KiB/core, L1i 64 KiB/core, L2 2 MiB/core, L3 12 MiB/core
 - **System Memory (RAM)**: *(Check with `free -h` on VM if exact value is needed)*
 
 ## 2. Operating System
@@ -17,6 +17,7 @@ This document records the hardware specifications, operating system, and compile
 - **Compiler Optimization Flags**: `-O2 -std=c11 -Wall -Wextra -pthread`
 
 ## System Command Output
+*(Note: The raw `lscpu` block below was captured during the initial 6-vCPU check before the VM was bumped to 8 vCPUs for the final benchmark run; `scripts/run_bench.sh` preserves existing output blocks.)*
 ```
 Linux harry-VirtualBox 7.0.0-43-generic #43~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Sat Oct 31 06:52:47 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
 ```

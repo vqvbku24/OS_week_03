@@ -11,16 +11,16 @@ General Convention: `TODO(X-n)` corresponds to unique task identifiers located a
 **Assigned Files**: `src/common.h`, `src/pi_single.c`, assigned sections in `report/report.md`.
 
 **Checklist**
-- [ ] TODO(A-1) `src/common.h`: Implement `now_sec()` using `clock_gettime(CLOCK_MONOTONIC)`.
-- [ ] TODO(A-2) `src/common.h`: Implement standard `xorshift64()` (13, 7, 17); handle `state != 0`.
-- [ ] TODO(A-3) `src/common.h`: Implement `rand01()` converting 64-bit integer to `double` in `[0, 1)`.
-- [ ] TODO(A-4) `src/common.h`: Implement `split_work()` distributing work evenly, assigning remainder to last thread.
-- [ ] TODO(A-5) `src/common.h`: Implement `seed_for_thread()` producing independent, mixed seeds per thread.
-- [ ] TODO(A-6) `src/pi_single.c`: Monte Carlo loop generating points and counting circle hits.
-- [ ] TODO(A-7) `src/pi_single.c`: Compute $\pi = 4.0 \times \frac{\text{inside}}{\text{total}}$, verifying $\pi \approx 3.1416$.
-- [ ] TODO(A-8) `report/report.md`: Write Section 2.1 — Approach 1 Design (Single thread baseline).
-- [ ] TODO(A-9) `report/report.md`: Write Section 3 — Measurement Methodology (monotonic clock, seed independence, $\ge 5$ runs).
-- [ ] TODO(A-10) `report/report.md`: Write Section 5.2.A — Non-linear Speedup Analysis (Amdahl's law, thread overhead, diminishing returns).
+- [x] TODO(A-1) `src/common.h`: Implement `now_sec()` using `clock_gettime(CLOCK_MONOTONIC)`.
+- [x] TODO(A-2) `src/common.h`: Implement standard `xorshift64()` (13, 7, 17); handle `state != 0`.
+- [x] TODO(A-3) `src/common.h`: Implement `rand01()` converting 64-bit integer to `double` in `[0, 1)`.
+- [x] TODO(A-4) `src/common.h`: Implement `split_work()` distributing work evenly, assigning remainder to last thread.
+- [x] TODO(A-5) `src/common.h`: Implement `seed_for_thread()` producing independent, mixed seeds per thread.
+- [x] TODO(A-6) `src/pi_single.c`: Monte Carlo loop generating points and counting circle hits.
+- [x] TODO(A-7) `src/pi_single.c`: Compute $\pi = 4.0 \times \frac{\text{inside}}{\text{total}}$, verifying $\pi \approx 3.1416$.
+- [x] TODO(A-8) `report/report.md`: Write Section 2.1 — Approach 1 Design (Single thread baseline).
+- [x] TODO(A-9) `report/report.md`: Write Section 3 — Measurement Methodology (monotonic clock, seed independence, $\ge 5$ runs).
+- [x] TODO(A-10) `report/report.md`: Write Section 5.2.A — Non-linear Speedup Analysis (Amdahl's law, thread overhead, diminishing returns).
 
 **Dependencies**: None.
 **Definition of Done (DoD)**:
@@ -61,12 +61,12 @@ General Convention: `TODO(X-n)` corresponds to unique task identifiers located a
 **Assigned Files**: `src/pi_mutex.c`, assigned sections in `report/report.md`.
 
 **Checklist**
-- [ ] TODO(C-1) `src/pi_mutex.c`: Wrap `pthread_mutex_lock/unlock` around every increment of global `shared_inside` in the hot loop.
-- [ ] TODO(C-2) `src/pi_mutex.c`: Properly initialize and destroy mutex (`pthread_mutex_init`, `pthread_mutex_destroy`).
-- [ ] TODO(C-3) `src/pi_mutex.c`: Verify correctness (no race condition) by matching results with `pi_local` under identical seeds.
-- [ ] TODO(C-4) `report/report.md`: Write Section 2.3 — Approach 3 Design (Shared counter, locking mechanics).
-- [ ] TODO(C-5) `report/report.md`: Write Section 5.2.D — Mutex Contention & Serialization Analysis.
-- [ ] TODO(C-6) `report/report.md`: Write Section 6.3 — Direct Comparison: Local Accumulation vs. Shared Counter.
+- [x] TODO(C-1) `src/pi_mutex.c`: Wrap `pthread_mutex_lock/unlock` around every increment of global `shared_inside` in the hot loop.
+- [x] TODO(C-2) `src/pi_mutex.c`: Properly initialize and destroy mutex (`pthread_mutex_init`, `pthread_mutex_destroy`).
+- [x] TODO(C-3) `src/pi_mutex.c`: Verify correctness (no race condition) by matching results with `pi_local` under identical seeds.
+- [x] TODO(C-4) `report/report.md`: Write Section 2.3 — Approach 3 Design (Shared counter, locking mechanics).
+- [x] TODO(C-5) `report/report.md`: Write Section 5.2.D — Mutex Contention & Serialization Analysis.
+- [x] TODO(C-6) `report/report.md`: Write Section 6.3 — Direct Comparison: Local Accumulation vs. Shared Counter.
 
 **Dependencies**: `src/common.h` by QVinh (Member A); benchmark numbers from Member B for comparative analysis.
 **Definition of Done (DoD)**:
@@ -147,10 +147,19 @@ General Convention: `TODO(X-n)` corresponds to unique task identifiers located a
 
 ---
 
+## Important Notes Before Final Benchmark & Submission
+
+- **Remove all `STUB(...)` warnings (Members B, C, D)**: Before running the formal benchmark, remove `static int warned` and `fprintf(stderr, "STUB...")` inside `worker()` in `src/pi_local.c`, `src/pi_mutex.c`, `src/pi_mutex_k.c`, and `src/pi_atomic.c` to prevent I/O overhead inside the timed region and avoid data races on `warned`. *(Already completed for Member A in `src/common.h` and `src/pi_single.c`.)*
+- **`pi_mutex_k.c` batching definition (Member D)**: Current scaffold flushes every `k` circle *hits* (`local_inside >= k_batch`). Either switch to every `k` loop *iterations* (`(i + 1) % k_batch == 0`) to match the lab wording strictly, or keep hits-based batching and document it explicitly in Section 6.1.
+- **Agree on a single fixed `N` across all approaches (All Members)**: Running `pi_mutex` with `N = 10^8` at 64–128 threads × 5 runs can take a long time. Agree on one fixed `N` (e.g., `10^7` or `10^8`) for all approaches and record it clearly in `report/report.md`.
+- **Fill in member names & student IDs**: Update the header of `report/report.md` with full names and student IDs of all 5 members before submission.
+
+---
+
 ## Final Submission Checklist
 
 - [ ] All 5 C programs compile cleanly without warnings (`make` succeeds with 0 warnings).
-- [ ] Raw data files produced: `results/results.csv` and `results/tradeoff_k.csv`.
-- [ ] All visualization charts generated in `plots/` (`time`, `speedup`, `efficiency`, `tradeoff_k`, `comparison`).
-- [ ] Comprehensive laboratory report `report/report.md` with all 7 sections fully written and formatted.
+- [ ] Raw data files produced and committed: `results/results.csv` and `results/tradeoff_k.csv`.
+- [ ] All visualization charts generated and committed in `plots/` (`time`, `speedup`, `efficiency`, `tradeoff_k`, `comparison`).
+- [ ] Comprehensive laboratory report `report/report.md` with all 7 sections fully written and formatted (with all member names & IDs).
 - [ ] System environment file `report/environment.md` correctly documenting experimental testbed.

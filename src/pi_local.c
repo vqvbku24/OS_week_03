@@ -4,6 +4,8 @@
  */
 
 #include "common.h"
+_Static_assert(sizeof(padded_u64) == CACHE_LINE,
+               "padded_u64 must fill one cache line");
 
 // TODO(B-5): Explain why padding structure (padded_u64) is used in the results array (Member B).
 // Explanation:
@@ -21,7 +23,7 @@ typedef struct {
     padded_u64 *results;
 } thread_arg_t;
 
-void *worker(void *arg) {
+static void *worker(void *arg) {
     thread_arg_t *tdata = (thread_arg_t *)arg;
 
     // TODO(B-2): Initialize independent PRNG state for this thread using seed_for_thread (Member B).
@@ -41,11 +43,7 @@ void *worker(void *arg) {
     //   }
     //   tdata->results[tdata->id].value = local_inside;
     // Acceptance criteria: Extremely fast inner loop with zero shared memory or lock overhead.
-    static int warned = 0;
-    if (!warned) {
-        warned = 1;
-        fprintf(stderr, "STUB(B-1, B-2): worker in pi_local is running.\n");
-    }
+    
 
     uint64_t local_inside = 0;
     for (uint64_t i = 0; i < tdata->count; i++) {
@@ -62,13 +60,24 @@ void *worker(void *arg) {
 
 int main(int argc, char **argv) {
     config_t cfg = parse_args(argc, argv);
+    if (cfg.total == 0) {
+    fprintf(stderr, "Error: total_points must be positive.\n");
+    return EXIT_FAILURE;
+}
 
     pthread_t *threads = malloc(sizeof(pthread_t) * (size_t)cfg.threads);
     thread_arg_t *args = malloc(sizeof(thread_arg_t) * (size_t)cfg.threads);
-    padded_u64 *results = malloc(sizeof(padded_u64) * (size_t)cfg.threads);
+    padded_u64 *results = aligned_alloc(
+    CACHE_LINE,
+    sizeof(padded_u64) * (size_t)cfg.threads
+);
 
     if (!threads || !args || !results) {
         fprintf(stderr, "Error: Failed to allocate memory for threads.\n");
+        free(threads);
+        free(args);
+        free(results);
+
         exit(EXIT_FAILURE);
     }
 
@@ -85,28 +94,49 @@ int main(int argc, char **argv) {
     //       pthread_create(&threads[i], NULL, worker, &args[i]);
     //   }
     // Acceptance criteria: Spawns exact number of threads, correctly distributing all points.
-    for (int i = 0; i < cfg.threads; i++) {
-        args[i].id = i;
-        args[i].count = split_work(cfg.total, cfg.threads, i);
-        args[i].seed = cfg.seed;
-        args[i].results = results;
-        pthread_create(&threads[i], NULL, worker, &args[i]);
-    }
+    int created = 0;
 
-    // TODO(B-4): Join all threads, perform Reduce phase (summing results[i].value), and compute pi (Member B).
-    // Hint:
-    //   uint64_t total_inside = 0;
-    //   for (int i = 0; i < cfg.threads; i++) {
-    //       pthread_join(threads[i], NULL);
-    //       total_inside += results[i].value;
-    //   }
-    //   double pi = 4.0 * (double)total_inside / (double)cfg.total;
-    // Acceptance criteria: Safely awaits all threads, aggregates final count, computes pi ~ 3.1416.
-    uint64_t total_inside = 0;
     for (int i = 0; i < cfg.threads; i++) {
-        pthread_join(threads[i], NULL);
+      args[i].id = i;
+      args[i].count = split_work(cfg.total, cfg.threads, i);
+      args[i].seed = cfg.seed;
+      args[i].results = results;
+      results[i].value = 0;
+
+      int rc = pthread_create(&threads[i], NULL, worker, &args[i]);
+
+        if (rc != 0) {
+          fprintf(stderr, "Error: pthread_create failed (%s).\n",
+                strerror(rc));
+          break;
+      }
+
+      created++;
+    }
+        // B-4: Join all threads and reduce partial results.
+    uint64_t total_inside = 0;
+
+    for (int i = 0; i < created; i++) {
+        int rc = pthread_join(threads[i], NULL);
+
+        if (rc != 0) {
+            fprintf(stderr, "Error: pthread_join failed (%s).\n",
+                    strerror(rc));
+            exit(EXIT_FAILURE);
+        }
+
         total_inside += results[i].value;
     }
+
+    if (created != cfg.threads) {
+        free(threads);
+        free(args);
+        free(results);
+
+        return EXIT_FAILURE;
+    }
+    
+
 
     double pi = 4.0 * (double)total_inside / (double)cfg.total;
     double t_end = now_sec();

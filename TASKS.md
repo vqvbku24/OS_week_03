@@ -61,12 +61,12 @@ General Convention: `TODO(X-n)` corresponds to unique task identifiers located a
 **Assigned Files**: `src/pi_mutex.c`, assigned sections in `report/report.md`.
 
 **Checklist**
-- [ ] TODO(C-1) `src/pi_mutex.c`: Wrap `pthread_mutex_lock/unlock` around every increment of global `shared_inside` in the hot loop.
-- [ ] TODO(C-2) `src/pi_mutex.c`: Properly initialize and destroy mutex (`pthread_mutex_init`, `pthread_mutex_destroy`).
-- [ ] TODO(C-3) `src/pi_mutex.c`: Verify correctness (no race condition) by matching results with `pi_local` under identical seeds.
-- [ ] TODO(C-4) `report/report.md`: Write Section 2.3 — Approach 3 Design (Shared counter, locking mechanics).
-- [ ] TODO(C-5) `report/report.md`: Write Section 5.2.D — Mutex Contention & Serialization Analysis.
-- [ ] TODO(C-6) `report/report.md`: Write Section 6.3 — Direct Comparison: Local Accumulation vs. Shared Counter.
+- [x] TODO(C-1) `src/pi_mutex.c`: Wrap `pthread_mutex_lock/unlock` around every increment of global `shared_inside` in the hot loop.
+- [x] TODO(C-2) `src/pi_mutex.c`: Properly initialize and destroy mutex (`pthread_mutex_init`, `pthread_mutex_destroy`).
+- [x] TODO(C-3) `src/pi_mutex.c`: Verify correctness (no race condition) by matching results with `pi_local` under identical seeds.
+- [x] TODO(C-4) `report/report.md`: Write Section 2.3 — Approach 3 Design (Shared counter, locking mechanics).
+- [x] TODO(C-5) `report/report.md`: Write Section 5.2.D — Mutex Contention & Serialization Analysis.
+- [x] TODO(C-6) `report/report.md`: Write Section 6.3 — Direct Comparison: Local Accumulation vs. Shared Counter.
 
 **Dependencies**: `src/common.h` by QVinh (Member A); benchmark numbers from Member B for comparative analysis.
 **Definition of Done (DoD)**:

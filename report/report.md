@@ -12,7 +12,7 @@
 ## 1. Introduction and Experimental Setup
 *Assigned Member: Member E*
 
-<!-- TODO(E-12): Write introduction to Monte Carlo pi estimation and summarize system setup from report/environment.md (Member E) -->
+In this lab, we estimate the value of $\pi$ using the Monte Carlo method in C with POSIX threads (`pthread`). Because each random point is independent, this problem is well suited for parallel testing. We run and compare 5 versions (`pi_single`, `pi_local`, `pi_mutex`, `pi_mutex_k`, and `pi_atomic`) to see how thread count and synchronization affect execution time and speedup.
 
 ### 1.1 Monte Carlo Principle for Estimating $\pi$
 - Generate $N$ uniform random points $(x, y) \in [0, 1] \times [0, 1]$.
@@ -20,8 +20,10 @@
 - Geometric area ratio: $\frac{\text{Quarter circle area}}{\text{Unit square area}} = \frac{\frac{\pi \times 1^2}{4}}{1 \times 1} = \frac{\pi}{4}$.
 - Estimation formula: $\pi \approx 4 \times \frac{\text{Points inside circle}}{\text{Total points generated}} = 4 \times \frac{M}{N}$.
 
-### 1.2 System Environment
-- Detailed hardware and operating system metrics are documented in [`environment.md`](environment.md).
+### 1.2 Experimental Setup
+- **Test Parameters**: Default $N = 10^8$ points, 5 runs per setting (`SEED=12345`), with 1 warm-up run before measuring.
+- **Tested Configurations**: Thread counts `1, 2, 4, 8, 16, 32, 64, 100, 128` (`scripts/run_bench.sh`), and batch size $k \in \{1, 10, 100, 1000, 10000, 1000000\}$ (`scripts/run_tradeoff.sh`).
+- **Build & Machine Info**: Compiled with `gcc -O2 -std=c11 -Wall -Wextra -pthread`. Machine specs are saved in [`environment.md`](environment.md).
 
 ---
 
@@ -63,25 +65,38 @@
 ## 4. Experimental Results
 *Assigned Member: Member E*
 
-<!-- TODO(E-13): Tabulate benchmark results (mean execution times, standard deviations, speedup, efficiency) and embed figures from plots/ (Member E) -->
+The automation scripts `scripts/run_bench.sh` and `scripts/run_tradeoff.sh` collect raw timings into `results/results.csv` and `results/tradeoff_k.csv`, and `scripts/plot.py` computes the summary statistics and exports the charts into `plots/`.
 
 ### 4.1 Summary Table
-*(Extracted from `results/results.csv` after running the benchmark suite)*
+*(Extracted from `results/results.csv` via `scripts/plot.py`; replace placeholder cells with the final formal $N = 10^8$ benchmark numbers once all implementations in `src/` are finalized.)*
 
 | Approach | Threads | Mean Time (s) | Std Dev (s) | Speedup | Parallel Efficiency |
 |---|---|---|---|---|---|
-| single | 1 | ... | ... | 1.00x | 100% |
+| single | 1 | ... | ... | 1.00x | 100.0% |
 | local | 2 | ... | ... | ... | ... |
 | local | 4 | ... | ... | ... | ... |
+| local | 8 | ... | ... | ... | ... |
 | mutex | 2 | ... | ... | ... | ... |
+| mutex | 4 | ... | ... | ... | ... |
 | atomic | 2 | ... | ... | ... | ... |
+| atomic | 4 | ... | ... | ... | ... |
 
 ### 4.2 Visualization Figures
-- **Execution Time vs. Thread Count**: `plots/time_vs_threads.png`
-- **Speedup vs. Thread Count**: `plots/speedup_vs_threads.png`
-- **Parallel Efficiency vs. Thread Count**: `plots/efficiency_vs_threads.png`
-- **Synchronization Trade-off vs. Batch Size $k$**: `plots/tradeoff_k.png`
-- **Direct Comparison: Local Accumulation vs. Mutex**: `plots/comparison_local_vs_mutex.png`
+
+![Execution Time vs. Thread Count](../plots/time_vs_threads.png)
+*Figure 1: Mean execution time and standard deviation across thread counts for each approach.*
+
+![Parallel Speedup vs. Thread Count](../plots/speedup_vs_threads.png)
+*Figure 2: Parallel speedup ($T_{\text{single}} / T_n$) compared against ideal linear scaling.*
+
+![Parallel Efficiency vs. Thread Count](../plots/efficiency_vs_threads.png)
+*Figure 3: Parallel efficiency ($\text{Speedup} / n$) across thread counts with physical core reference.*
+
+![Experiment 6.1: Execution Time vs. Batch Size k](../plots/tradeoff_k.png)
+*Figure 4: Synchronization trade-off showing runtime vs. batch size $k$ on a logarithmic x-axis.*
+
+![Experiment 6.3: Local Accumulation vs. Mutex](../plots/comparison_local_vs_mutex.png)
+*Figure 5: Direct runtime comparison between local accumulation (`local`) and shared mutex (`mutex`).*
 
 ---
 
@@ -110,7 +125,14 @@
 ### 5.2.E Decay of Parallel Efficiency
 *Assigned Member: Member E*
 
-<!-- TODO(E-14): Formulate Parallel Efficiency = Speedup / n, discussing why efficiency progressively declines as thread count increases according to the law of diminishing returns (Member E) -->
+Parallel efficiency shows how much useful work each thread gives us on average. It is calculated as:
+
+$$\text{Efficiency}(n) = \frac{\text{Speedup}(n)}{n} = \frac{T_{\text{single}}}{n \cdot T_n}$$
+
+In the ideal case, using $n$ threads makes the program $n$ times faster, so efficiency stays at $1.0$ ($100\%$). In practice, efficiency goes down as $n$ gets larger because of three main reasons:
+1. **Sequential overhead**: Parts like creating threads (`pthread_create`), joining threads (`pthread_join`), and adding the final counts take fixed time and do not get faster with more threads.
+2. **Lock and shared-variable waiting**: In `pi_mutex` and `pi_atomic`, more threads mean more threads trying to update the same shared variable at once, so they spend more time waiting instead of computing.
+3. **Too many threads for the CPU cores**: When $n$ is larger than the number of physical CPU cores, threads must share the same cores and the OS spends extra time switching between them, making efficiency drop quickly.
 
 ---
 
@@ -142,10 +164,11 @@
 ## 7. Best Practices & Conclusion
 *Assigned Member: Entire Group (Synthesized by Member E)*
 
-<!-- TODO(E-15): Synthesize multi-threaded software engineering principles established through this laboratory investigation (Synthesized by Member E) -->
-- **Avoid Shared State in Inner Loops**: Always favor Local Accumulation and Map-Reduce paradigms.
-- **Eliminate False Sharing**: Respect Cache Line boundaries (64 bytes) using explicit padding structures.
-- **Select Concurrency Primitives Deliberately**:
-  - Lock-free / Share-nothing > Batching > Coarse-grained Locks > Fine-grained Unbatched Locks.
-- **Thread-Local PRNG**: Avoid global pseudo-random state locks (such as `rand()`); enforce thread-private generators (`xorshift64`).
-- **Optimal Concurrency Bounds**: Restrict worker threads to available physical cores to prevent harmful OS oversubscription.
+From testing the five Monte Carlo $\pi$ approaches, here are the main takeaways for writing multi-threaded C programs:
+- **Avoid shared variables inside the main loop**: Use a local variable per thread (`pi_local`) and add all results together once after `pthread_join`.
+- **Avoid false sharing**: Add 64-byte padding (`padded_u64`) to per-thread output slots so threads do not overwrite the same CPU cache line.
+- **Pick the right synchronization method**: Local accumulation (`local`) > batching (`mutex_k` with large $k$) > atomic (`atomic`) > unbatched mutex (`mutex`).
+- **Use a separate PRNG per thread**: Do not use global `rand()`; give each thread its own `xorshift64` state and seed.
+- **Keep thread count near physical cores**: Adding way more threads than CPU cores adds context-switching overhead instead of extra speed.
+
+In short, keeping computation local to each thread and minimizing lock updates gives the best speedup and parallel efficiency.

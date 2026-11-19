@@ -40,7 +40,19 @@
 ### 2.3 Approach 3: Shared Counter with Mutex Lock
 *Assigned Member: Member C*
 
-<!-- TODO(C-4): Present Shared Counter design: single global shared_inside counter, pthread_mutex_lock/unlock around every circle hit, structural performance bottleneck (Member C) -->
+Approach 3 (`src/pi_mutex.c`) implements a **shared-state** synchronization model to contrast directly with Approach 2's share-nothing design:
+
+- **Global Shared State & Lock:** A single static 64-bit accumulator `shared_inside` holds the total number of points landing inside the quarter unit circle, guarded by a POSIX mutex (`pthread_mutex_t lock`).
+- **Parallel Point Generation with Fine-Grained Critical Section:** Each worker thread receives its assigned sample count via `split_work()` and derives an independent PRNG state via `seed_for_thread()`. Random coordinate generation `(x, y)` and the circle check ($x^2 + y^2 \le 1.0$) execute concurrently, but every qualifying hit immediately enters a fine-grained critical section:
+  ```c
+  if (x * x + y * y <= 1.0) {
+      pthread_mutex_lock(&lock);
+      shared_inside++;
+      pthread_mutex_unlock(&lock);
+  }
+  ```
+  Because the quarter circle covers $\frac{\pi}{4} \approx 78.54\%$ of the unit square, roughly $78.5\%$ of all Monte Carlo iterations acquire and release `lock`.
+- **Mutex Lifecycle & Correctness Guarantees:** In `main()`, `pthread_mutex_init(&lock, NULL)` initializes the mutex prior to spawning worker threads, `shared_inside` is reset to `0`, all thread creation and `pthread_join()` calls are error-checked, and `pthread_mutex_destroy(&lock)` reclaims the mutex only after every worker has joined. While this preserves deterministic correctness (zero lost updates / zero data races), forcing all threads through one lock intentionally exposes synchronization overhead as a structural bottleneck.
 
 ### 2.4 Mutex Batching ($k$) and Lock-Free Atomic Variants
 *Assigned Member: Member D*
@@ -105,7 +117,11 @@
 ### 5.2.D Synchronization Overhead & Serialization (Mutex Contention)
 *Assigned Member: Member C*
 
-<!-- TODO(C-5): Analyze why Approach 3 is orders of magnitude slower than Approach 2: thread serialization, sleep/wake queue penalties, and degradation of parallel execution into penalized sequential execution (Member C) -->
+Approach 3 performs orders of magnitude slower than Approach 2—and degrades rather than improves as thread count grows—due to three compounding costs:
+
+1. **Execution Serialization (Amdahl's Law Bottleneck):** Mutual exclusion enforces that at most one thread can hold `lock` and update `shared_inside` at any instant. Since $\approx \frac{\pi}{4}N$ iterations enter the critical section and the non-critical work per point (two `xorshift64` steps and two multiplications) takes only a few nanoseconds, threads spend far more time waiting on the lock than computing. Parallel execution effectively collapses into **penalized sequential execution**.
+2. **Mutex Contention & Kernel Sleep/Wake Penalties:** For $N$ total points, approximately $0.785 N$ lock/unlock transitions occur. At $1$ thread, the mutex incurs uncontended atomic fast-path overhead on every hit. As threads scale to $2, 4, 8, \dots$, multiple cores collide on the lock simultaneously: the fast path fails, threads transition into the OS kernel wait queue (e.g., `futex` on Linux or Win32 synchronization primitives on Windows), and the scheduler puts waiting threads to sleep and later wakes them. Each contended sleep/wake cycle and involuntary context switch costs thousands of CPU cycles—vastly exceeding the single `shared_inside++` instruction being protected.
+3. **Cache-Line Bouncing (Coherence Traffic):** Every lock acquisition, counter increment, and lock release modifies shared memory locations (`lock` and `shared_inside`). Under hardware cache coherence protocols (e.g., MESI), CPU cores continuously invalidate and transfer ownership of those cache lines across the interconnect, stalling core pipelines even before kernel blocking occurs.
 
 ### 5.2.E Decay of Parallel Efficiency
 *Assigned Member: Member E*
@@ -135,7 +151,30 @@
 ### 6.3 Local Accumulation vs. Shared Counter
 *Assigned Member: Member C*
 
-<!-- TODO(C-6): Provide comprehensive head-to-head empirical comparison between Share-Nothing (Local state) and Shared-State (Mutex-locked) architectures (Member C) -->
+Comparing **Local Accumulation (`pi_local.c`, Approach 2)** against **Shared Counter with Mutex (`pi_mutex.c`, Approach 3)** demonstrates why eliminating shared state inside hot loops is a foundational rule of parallel programming:
+
+| Dimension | Local Accumulation (`pi_local.c`) | Shared Counter + Mutex (`pi_mutex.c`) |
+|---|---|---|
+| **Critical Section** | **None in hot loop.** Each thread increments a register/stack `local_inside` variable and writes once to its cache-line-padded `results[id].value` before exiting. | **Executed $\approx \frac{\pi}{4}N$ times.** Every circle hit acquires and releases `pthread_mutex_t lock` around `shared_inside++`. |
+| **Contention** | **Zero.** No lock competition and no cross-core cache invalidation (`padded_u64` eliminates false sharing). | **Severe.** All threads compete for a single mutex and a single shared counter cache line, escalating rapidly with thread count. |
+| **Serialization** | **Negligible.** Only the final $O(\text{threads})$ reduction loop in `main()` runs sequentially after `pthread_join()`. | **Dominant.** Shared-counter updates serialize across all cores and trigger OS wait-queue blocking and context switches. |
+| **Scaling Trend** | Execution time decreases up to physical CPU core saturation. | Execution time **increases** monotonically as more threads contend for the lock. |
+
+#### Preliminary Correctness & Head-to-Head Verification
+To validate race-free correctness and quantify the scaling divergence prior to full-scale cluster/Linux benchmarking ($N = 10^8$ in `results/results.csv`), both binaries were compiled with `-O2 -std=c11 -Wall -Wextra -pthread` and executed for $5$ runs per configuration on Windows (MinGW) with fixed $N = 2{,}000{,}000$ and `seed = 12345`:
+
+| Threads | `pi_local` Mean (s) | `pi_mutex` Mean (s) | Slowdown ($T_{\text{mutex}} / T_{\text{local}}$) | `pi_local` Estimate | `pi_mutex` Estimate |
+|---|---|---|---|---|---|
+| 1 | 0.024938 | 0.118738 | 4.76× | 3.141608000 | 3.141608000 |
+| 2 | 0.016362 | 0.181986 | 11.12× | 3.142280000 | 3.142280000 |
+| 4 | 0.010315 | 0.203908 | 19.77× | 3.143680000 | 3.143680000 |
+| 8 | 0.009694 | 0.326619 | 33.69× | 3.143474000 | 3.143474000 |
+
+*(Note: Preliminary verification above ran prior to integrating Member A/B final `common.h` and `pi_local.c` commits; values should be refreshed from Member E's final `results/results.csv` at $N = 10^8$ after merge.)*
+
+Two conclusions follow directly from the data:
+1. **Zero Race Conditions:** At every thread count, `pi_mutex` produces the **exact same 9-decimal-place $\pi$ estimate** as `pi_local`, confirming that the mutex prevents lost updates.
+2. **Contention Penalty:** Even with $1$ thread, uncontended locking makes `pi_mutex` **4.76× slower** than `pi_local`. At $8$ threads, while `pi_local` accelerates by **2.57×** (`0.024938s` $\rightarrow$ `0.009694s`), `pi_mutex` slows down by **2.75×** relative to its own 1-thread time (`0.118738s` $\rightarrow$ `0.326619s`), becoming **33.69× slower** than `pi_local`.
 
 ---
 
